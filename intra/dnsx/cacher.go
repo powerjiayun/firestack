@@ -351,9 +351,9 @@ func (t *ctransport) fetch(network string, q *dns.Msg, summary *x.DNSSummary, cb
 		cachedres, fresh := cb.freshCopy(key) // always prefer value from cache
 		if cachedres == nil {                 // v.Val may be uncacheable (ex: rcode != 0)
 			cachedres = cc.copy() // cc (cres) never nil; but cc.ans may be nil
-			log.D("cache: barrier: empty(k: %s); barrier: %s", key, v.String())
+			log.D("cache: barrier: empty(k: %s); barrier: %s", key, v)
 		} else if !fresh { // expect fresh values, except on verrs
-			log.W("cache: barrier: stale(k: %s); barrier: %s (cache: %s)", key, v.String(), cachedres.String())
+			log.W("cache: barrier: stale(k: %s); barrier: %s (cache: %s)", key, v, cachedres)
 		}
 
 		// nil ans when Transport returns err (no servfail) and cache is empty

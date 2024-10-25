@@ -40,6 +40,9 @@ func New(id string) *MH {
 }
 
 func (h *MH) String() string {
+	if h == nil {
+		return "<nil>"
+	}
 	return h.id + ":" + strings.Join(h.straddrs(), ",")
 }
 

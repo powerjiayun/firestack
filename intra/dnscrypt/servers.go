@@ -332,6 +332,10 @@ func hostport(stamp *stamps.ServerStamp) (string, uint16) {
 }
 
 func (s *serverinfo) String() string {
+	if s == nil {
+		return "<nil>"
+	}
+
 	serverid := s.ID()
 	servername := s.GetAddr()
 	serveraddr := "notcp"
