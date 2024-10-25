@@ -492,6 +492,15 @@ func newMuxTable() *muxTable {
 	return &muxTable{t: make(map[netip.AddrPort]*muxer)}
 }
 
+func (e *muxTable) pid(src netip.AddrPort) string {
+	e.Lock()
+	defer e.Unlock()
+	if mxr := e.t[src]; mxr != nil {
+		return mxr.pid
+	}
+	return ""
+}
+
 func (e *muxTable) associate(cid, pid, uid string, src, dst netip.AddrPort, mk assocFn, v vendor) (_ net.Conn, err error) {
 	e.Lock() // lock
 
