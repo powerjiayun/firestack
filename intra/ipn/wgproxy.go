@@ -565,14 +565,14 @@ func makeWgTun(id, cfg string, rev netstack.GConnHandler, ifaddrs, allowedaddrs 
 		_ = s.SetPromiscuousMode(wgnic, true)
 	}
 
-	processed := make(map[string]bool)
+	processed := make(map[netip.Prefix]bool)
 	for _, ipnet := range ifaddrs {
 		ip := ipnet.Addr()
-		if processed[ipnet.String()] {
+		if processed[ipnet] {
 			log.W("proxy: wg: %s skipping duplicate ip %v for ifaddr %v", t.id, ip, ipnet)
 			continue
 		}
-		processed[ipnet.String()] = true
+		processed[ipnet] = true
 
 		var protoid tcpip.NetworkProtocolNumber
 		var nsaddr tcpip.Address
