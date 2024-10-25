@@ -69,15 +69,11 @@ type RDial struct {
 	dialer     *net.Dialer       // may be nil; used by exit, base, grounded
 	listen     *net.ListenConfig // may be nil; used by exit, base, grounded
 	listenICMP *icmplistener     // may be nil; used by exit, base, grounded
-
-	// remote dialer
-	delegate RDialer // may be nil; used by remote proxies, ex: wg
 }
 
 var _ RDialer = (*RDial)(nil)
 
 var (
-	errNoDialer    = errors.New("not a dialer")
 	errNoTCP       = errors.New("not a tcp dialer")
 	errNoUDP       = errors.New("not a udp dialer")
 	errNoAnnouncer = errors.New("not an announcer")
@@ -96,17 +92,7 @@ func (d *RDial) Handle() uintptr {
 }
 
 func (d *RDial) dial(network, addr string) (net.Conn, error) {
-	usedialer := d.dialer != nil
-	usedelegate := d.delegate != nil && core.IsNotNil(d.delegate)
-	if usedialer {
-		return d.dialer.Dial(network, addr)
-	}
-	if usedelegate {
-		return d.delegate.Dial(network, addr)
-	}
-	log.V("xdial: Dial: (r? %t / o: %s) %s %s; err: %v",
-		usedelegate, d.owner, network, addr, errNoDialer)
-	return nil, errNoDialer
+	return d.dialer.Dial(network, addr)
 }
 
 // Dial implements RDialer.
@@ -128,55 +114,45 @@ func (d *RDial) cloneDialer() *net.Dialer {
 
 // DialBind implements RDialer.
 func (d *RDial) DialBind(network, local, remote string) (net.Conn, error) {
-	usedialer := d.dialer != nil
-	usedelegate := d.delegate != nil && core.IsNotNil(d.delegate)
-	if usedialer {
-		var onlyport netip.AddrPort
-		rd := d.cloneDialer()
+	var onlyport netip.AddrPort
+	rd := d.cloneDialer()
 
-		if _, port, err := net.SplitHostPort(remote); err == nil {
-			// uport may be 0, which is "valid"
-			uport, _ := strconv.Atoi(port) // should not error
-			anyaddr := anyaddr6
-			// ipp invalid when local is without ip; ex: ":port"
-			if ipp, _ := netip.ParseAddrPort(local); ipp.Addr().Is4() {
-				anyaddr = anyaddr4
-			}
-			// ip addr binding is left upto dialer's Control
-			// which is "namespace" aware (on Android)
-			onlyport = netip.AddrPortFrom(anyaddr, uint16(uport))
-		} else { // okay for local to be invalid
-			log.D("xdial: DialBind: (o: %s); %s %s=>%s; err: invalid laddr not bound",
-				d.owner, network, local, remote)
+	if _, port, err := net.SplitHostPort(remote); err == nil {
+		// uport may be 0, which is "valid"
+		uport, _ := strconv.Atoi(port) // should not error
+		anyaddr := anyaddr6
+		// ipp invalid when local is without ip; ex: ":port"
+		if ipp, _ := netip.ParseAddrPort(local); ipp.Addr().Is4() {
+			anyaddr = anyaddr4
 		}
+		// ip addr binding is left upto dialer's Control
+		// which is "namespace" aware (on Android)
+		onlyport = netip.AddrPortFrom(anyaddr, uint16(uport))
+	} else { // okay for local to be invalid
+		log.D("xdial: DialBind: (o: %s); %s %s=>%s; err: invalid laddr not bound",
+			d.owner, network, local, remote)
+	}
 
-		switch network {
-		case "tcp", "tcp4", "tcp6":
-			if onlyport.IsValid() { // valid even when port is 0
-				rd.LocalAddr = net.TCPAddrFromAddrPort(onlyport)
-				log.V("xdial: DialBind: (o: %s); %s %s=>%s",
-					d.owner, network, rd.LocalAddr, remote)
-			}
-		case "udp", "udp4", "udp6":
-			if onlyport.IsValid() { // valid even when port is 0
-				rd.LocalAddr = net.UDPAddrFromAddrPort(onlyport)
-				log.V("xdial: DialBind: (o: %s); %s %s=>%s",
-					d.owner, network, rd.LocalAddr, remote)
-			}
-		default:
-			log.W("xdial: DialBind: (o: %s); %s %s=>%s; err: unsupported network",
-				d.owner, network, local, remote)
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		if onlyport.IsValid() { // valid even when port is 0
+			rd.LocalAddr = net.TCPAddrFromAddrPort(onlyport)
+			log.V("xdial: DialBind: (o: %s); %s %s=>%s",
+				d.owner, network, rd.LocalAddr, remote)
 		}
+	case "udp", "udp4", "udp6":
+		if onlyport.IsValid() { // valid even when port is 0
+			rd.LocalAddr = net.UDPAddrFromAddrPort(onlyport)
+			log.V("xdial: DialBind: (o: %s); %s %s=>%s",
+				d.owner, network, rd.LocalAddr, remote)
+		}
+	default:
+		log.W("xdial: DialBind: (o: %s); %s %s=>%s; err: unsupported network",
+			d.owner, network, local, remote)
+	}
 
-		// equivalent to d.dial()
-		return rd.Dial(network, remote)
-	}
-	if usedelegate {
-		return d.delegate.DialBind(network, local, remote)
-	}
-	log.V("xdial: DialBind: (r? %t / o: %s) %s %s=>%s; err: %v",
-		usedelegate, d.owner, network, local, remote, errNoDialer)
-	return nil, errNoDialer
+	// equivalent to d.dial()
+	return rd.Dial(network, remote)
 }
 
 // Accept implements RDialer interface.
@@ -185,19 +161,11 @@ func (d *RDial) Accept(network, local string) (net.Listener, error) {
 		return nil, errAccept
 	}
 	uselistener := d.listen != nil
-	usedelegate := d.delegate != nil && core.IsNotNil(d.delegate)
-	if !uselistener && !usedelegate {
-		log.V("xdial: Accept: (r? %t / o: %s) %s %s", usedelegate, d.owner, network, local)
+	if !uselistener {
+		log.V("xdial: Accept: (o: %s) %s %s", d.owner, network, local)
 		return nil, errNoAcceptor
 	}
-	if uselistener {
-		if ln, err := d.listen.Listen(context.Background(), network, local); err == nil {
-			return ln, nil
-		} else {
-			return nil, err
-		}
-	}
-	return d.delegate.Accept(network, local)
+	return d.listen.Listen(context.Background(), network, local)
 }
 
 // Announce implements RDialer.
@@ -210,26 +178,22 @@ func (d *RDial) Announce(network, local string) (net.PacketConn, error) {
 	// diailing (proxy.Dial/net.Dial/etc) on wildcard addresses (ex: ":8080" or "" or "localhost:1025")
 	// is not equivalent to listening/announcing. see: github.com/golang/go/issues/22827
 	uselistener := d.listen != nil
-	usedelegate := d.delegate != nil && core.IsNotNil(d.delegate)
-	if !uselistener && !usedelegate {
-		log.V("xdial: Announce: (r? %t / o: %s) %s %s", usedelegate, d.owner, network, local)
+	if !uselistener {
+		log.V("xdial: Announce: (o: %s) %s %s", d.owner, network, local)
 		return nil, errNoAnnouncer
 	}
-	if uselistener {
-		if pc, err := d.listen.ListenPacket(context.Background(), network, local); err == nil {
-			switch x := pc.(type) {
-			case *net.UDPConn:
-				return x, nil
-			default:
-				log.T("xdial: Announce: addr(%s) for owner(%s): failed; %T is not net.UDPConn; other errs: %v", local, d.owner, x, err)
-				clos(pc)
-				return nil, errNoUDPMux
-			}
-		} else {
-			return nil, err
+	if pc, err := d.listen.ListenPacket(context.Background(), network, local); err == nil {
+		switch x := pc.(type) {
+		case *net.UDPConn:
+			return x, nil
+		default:
+			log.T("xdial: Announce (o: %s): addr(%s) failed; %T is not net.UDPConn; other errs: %v", d.owner, local, x, err)
+			clos(pc)
+			return nil, errNoUDPMux
 		}
+	} else {
+		return nil, err
 	}
-	return d.delegate.Announce(network, local)
 }
 
 // Probe implements RDialer.
@@ -248,9 +212,8 @@ func (d *RDial) Probe(network, local string) (PacketConn, error) {
 	}
 	// todo: check if local is a local address or empty (any)
 	uselistener := d.listenICMP != nil
-	usedelegate := d.delegate != nil && core.IsNotNil(d.delegate)
-	if !uselistener && !usedelegate {
-		log.T("xdial: Probe: (r? %t / o: %s) %s %s", usedelegate, d.owner, network, local)
+	if !uselistener {
+		log.T("xdial: Probe: (o: %s) %s %s", d.owner, network, local)
 		return nil, errNoAnnouncer
 	}
 	// drop port if present
@@ -258,10 +221,7 @@ func (d *RDial) Probe(network, local string) (PacketConn, error) {
 		local = ip
 	}
 
-	if uselistener {
-		return d.listenICMP.listenICMP(network, local)
-	}
-	return d.delegate.Probe(network, local)
+	return d.listenICMP.listenICMP(network, local)
 }
 
 // DialTCP creates a net.TCPConn to raddr.
