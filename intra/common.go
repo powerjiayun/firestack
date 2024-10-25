@@ -592,10 +592,6 @@ func ntoa(n string) int32 {
 	return UNSUPPORTED_NETWORK
 }
 
-func firstEmpty(arr []string) bool {
-	return len(arr) <= 0 || len(arr[0]) <= 0
-}
-
 func isAnyBlockPid(pids []string) bool {
 	return containsPid(pids, ipn.Block)
 }

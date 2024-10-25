@@ -50,7 +50,6 @@ type udpHandler struct {
 var (
 	errNoIPsForDomain  = errors.New("dns: no ips")
 	errIcmpFirewalled  = errors.New("icmp: firewalled")
-	errNoProxyID       = errors.New("no proxy id")
 	errUdpFirewalled   = errors.New("udp: firewalled")
 	errUdpInFirewalled = errors.New("udp: ingress firewalled")
 	errUdpSetupConn    = errors.New("udp: could not create conn")
