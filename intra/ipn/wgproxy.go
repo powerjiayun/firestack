@@ -390,7 +390,7 @@ func wgIfConfigOf(id string, txtptr *string) (ifaddrs []netip.Prefix, allowedadd
 					warpipcsv := v4.String() + "," + v6.String()
 					n = loadMH(endpointh, warpipcsv)
 				}
-				loged(err)("proxy: wg: %s v4 %s, v6 %s; added? %d; err? %v",
+				logev(err)("proxy: wg: %s v4 %s, v6 %s; added? %d; err? %v",
 					id, v4, v6, n, err)
 			}
 			if n < 0 {
@@ -948,7 +948,7 @@ func (h *wgtun) IP6() bool { return h.hasV6 }
 
 func (h *wgtun) Contains(ippOrCidr string) bool {
 	y, err := h.rt.HasAny(ippOrCidr)
-	loged(err)("wg: %s router: %s contains? %t; err? %v", h.id, ippOrCidr, y, err)
+	logev(err)("wg: %s router: %s contains? %t; err? %v", h.id, ippOrCidr, y, err)
 	return y
 }
 
@@ -1012,11 +1012,11 @@ func timedout(err error) bool {
 	return ok && x.Timeout()
 }
 
-func loged(err error) log.LogFn {
+func logev(err error) log.LogFn {
 	if err != nil {
 		return log.E
 	}
-	return log.D
+	return log.V
 }
 
 // func Stop(), Fetch(), getDialer() is impl by wgproxy

@@ -417,7 +417,7 @@ func (px *proxifier) pin(uid string, ipp netip.AddrPort, p Proxy) error {
 		px.uidPins.Put(uid, ipp, p.ID())
 		px.ipPins.Put(ipp, p.ID())
 	}
-	loged(err)("proxy: pin: router? %t, ok? %t; %s from %s; err? %v",
+	logev(err)("proxy: pin: router? %t, ok? %t; %s from %s; err? %v",
 		p.Router() != nil, err == nil, ipp, p.ID(), err)
 	return err
 }
