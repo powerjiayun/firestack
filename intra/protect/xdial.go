@@ -74,16 +74,14 @@ type RDial struct {
 var _ RDialer = (*RDial)(nil)
 
 var (
-	errNoTCP       = errors.New("not a tcp dialer")
-	errNoUDP       = errors.New("not a udp dialer")
-	errNoAnnouncer = errors.New("not an announcer")
-	errNoAcceptor  = errors.New("not an acceptor")
-	errNoUDPMux    = errors.New("not a udp announcer")
-	errNoTCPMux    = errors.New("not a tcp announcer")
-	errNoICMPL3    = errors.New("not an ip:icmp listener")
-	errNoSysConn   = errors.New("no syscall.Conn")
-	errAnnounce    = errors.New("cannot announce network")
-	errAccept      = errors.New("cannot accept network")
+	errNoTCP     = errors.New("not a tcp dialer")
+	errNoUDP     = errors.New("not a udp dialer")
+	errNoUDPMux  = errors.New("not a udp announcer")
+	errNoTCPMux  = errors.New("not a tcp announcer")
+	errNoICMPL3  = errors.New("not an ip:icmp listener")
+	errNoSysConn = errors.New("no syscall.Conn")
+	errAnnounce  = errors.New("cannot announce network")
+	errAccept    = errors.New("cannot accept network")
 )
 
 // Handle implements RDialer.
@@ -160,11 +158,6 @@ func (d *RDial) Accept(network, local string) (net.Listener, error) {
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
 		return nil, errAccept
 	}
-	uselistener := d.listen != nil
-	if !uselistener {
-		log.V("xdial: Accept: (o: %s) %s %s", d.owner, network, local)
-		return nil, errNoAcceptor
-	}
 	return d.listen.Listen(context.Background(), network, local)
 }
 
@@ -177,11 +170,6 @@ func (d *RDial) Announce(network, local string) (net.PacketConn, error) {
 	// todo: check if local is a local address or empty (any)
 	// diailing (proxy.Dial/net.Dial/etc) on wildcard addresses (ex: ":8080" or "" or "localhost:1025")
 	// is not equivalent to listening/announcing. see: github.com/golang/go/issues/22827
-	uselistener := d.listen != nil
-	if !uselistener {
-		log.V("xdial: Announce: (o: %s) %s %s", d.owner, network, local)
-		return nil, errNoAnnouncer
-	}
 	if pc, err := d.listen.ListenPacket(context.Background(), network, local); err == nil {
 		switch x := pc.(type) {
 		case *net.UDPConn:
@@ -211,11 +199,6 @@ func (d *RDial) Probe(network, local string) (PacketConn, error) {
 		return nil, errAnnounce
 	}
 	// todo: check if local is a local address or empty (any)
-	uselistener := d.listenICMP != nil
-	if !uselistener {
-		log.T("xdial: Probe: (o: %s) %s %s", d.owner, network, local)
-		return nil, errNoAnnouncer
-	}
 	// drop port if present
 	if ip, _, err := net.SplitHostPort(local); err == nil {
 		local = ip
