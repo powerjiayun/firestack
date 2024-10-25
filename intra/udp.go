@@ -302,14 +302,14 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	// pc.RemoteAddr may be that of the proxy, not the actual dst
 	// ex: pc.RemoteAddr is 127.0.0.1 for Orbot
 	smm.Target = selectedTarget.Addr().String()
-	if px != nil {
+	if px != nil { // nil when all ProxyTo attempts for actualTargets fail
 		smm.PID = px.ID()
 	}
 
 	if errs != nil {
 		return nil, smm, errs // disconnect
-	} else if pc == nil || core.IsNil(pc) {
-		log.W("udp: connect: %s no egress conn/mux? %t for addr(%s/%s), uid %s",
+	} else if px == nil || pc == nil || core.IsNil(pc) {
+		log.W("udp: connect: %s no proxy/egress-conn (mux? %t) for addr(%s/%s), uid %s",
 			cid, mux, target, selectedTarget, uid)
 		return nil, smm, errUdpSetupConn // disconnect
 	}

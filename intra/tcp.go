@@ -203,9 +203,9 @@ func (h *tcpHandler) Proxy(gconn *netstack.GTCPConn, src, target netip.AddrPort)
 		} // else not a dns request
 	} // if ipn.Exit then let it connect as-is (aka exit)
 
-	var px ipn.Proxy = nil
 	// pick all realips to connect to
 	for i, dstipp := range actualTargets {
+		var px ipn.Proxy = nil
 		if px, err = h.prox.ProxyTo(dstipp, uid, pids); err != nil || px == nil {
 			continue
 		}
