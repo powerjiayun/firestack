@@ -45,10 +45,6 @@ func NewICMPHandler(pctx context.Context, resolver dnsx.Resolver, prox ipn.Proxi
 	return h
 }
 
-func (h *icmpHandler) flow(source, target netip.AddrPort) (_ *Mark, _ bool, _, _ string) {
-	return h.onFlow(source, target)
-}
-
 // Ping implements netstack.GICMPHandler.
 // Nb: to send icmp pings, root access is required; and so,
 // send "unprivileged" icmp pings via udp reqs; which do
@@ -64,7 +60,7 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 	var tx, rx int
 
 	// flow is alg/nat-aware, do not change target or any addrs
-	res, undidAlg, realips, doms := h.flow(source, target)
+	res, undidAlg, realips, doms := h.onFlow(source, target)
 	dst := oneRealIPPort(realips, target)
 	// on Android, uid is always "unknown" for icmp
 	cid, uid, _, pids := h.judge(res)
