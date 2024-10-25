@@ -115,7 +115,7 @@ func (d *RDial) DialBind(network, local, remote string) (net.Conn, error) {
 	var onlyport netip.AddrPort
 	rd := d.cloneDialer()
 
-	if _, port, err := net.SplitHostPort(remote); err == nil {
+	if _, port, err := net.SplitHostPort(local); err == nil {
 		// uport may be 0, which is "valid"
 		uport, _ := strconv.Atoi(port) // should not error
 		anyaddr := anyaddr6
