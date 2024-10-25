@@ -94,10 +94,10 @@ func (h *tcpHandler) Error(gconn *netstack.GTCPConn, src, dst netip.AddrPort, er
 		return
 	}
 	res, _, _, _ := h.onFlow(src, dst)
-	cid, pid, uid, _ := h.judge(res)
-	smm := tcpSummary(cid, pid, uid, dst.Addr())
+	cid, uid, _, pids := h.judge(res)
+	smm := tcpSummary(cid, uid, dst.Addr())
 
-	if pid == ipn.Block {
+	if isAnyBlockPid(pids) {
 		err = errTcpFirewalled
 	}
 	h.queueSummary(smm.done(err))
@@ -105,10 +105,10 @@ func (h *tcpHandler) Error(gconn *netstack.GTCPConn, src, dst netip.AddrPort, er
 
 func (h *tcpHandler) ReverseProxy(gconn *netstack.GTCPConn, in net.Conn, to, from netip.AddrPort) (open bool) {
 	fm := h.onInflow(to, from)
-	cid, pid, uid, _ := h.judge(fm)
-	smm := tcpSummary(cid, pid, uid, from.Addr())
+	cid, uid, _, pids := h.judge(fm)
+	smm := tcpSummary(cid, uid, from.Addr())
 
-	if pid == ipn.Block {
+	if isAnyBlockPid(pids) {
 		log.I("tcp: reverse: block %s => %s", from, to)
 		clos(gconn, in)
 		h.queueSummary(smm.done(errUdpInFirewalled))
@@ -164,11 +164,11 @@ func (h *tcpHandler) Proxy(gconn *netstack.GTCPConn, src, target netip.AddrPort)
 	smmTarget := target.Addr()
 	actualTargets := makeIPPorts(realips, target, 0)
 	boundSrc := makeAnyAddrPort(src)
-	cid, pid, uid, fid := h.judge(res, domains, target.String())
+	cid, uid, fid, pids := h.judge(res, domains, target.String())
 	if len(actualTargets) > 0 {
 		smmTarget = actualTargets[0].Addr()
 	}
-	smm = tcpSummary(cid, pid, uid, smmTarget)
+	smm = tcpSummary(cid, uid, smmTarget)
 
 	if h.status.Load() == HDLEND {
 		err = errTcpEnd
@@ -176,7 +176,8 @@ func (h *tcpHandler) Proxy(gconn *netstack.GTCPConn, src, target netip.AddrPort)
 		return deny
 	}
 
-	if pid == ipn.Block {
+	if isAnyBlockPid(pids) {
+		smm.PID = ipn.Block
 		if undidAlg && len(realips) <= 0 && len(domains) > 0 {
 			err = errNoIPsForDomain
 		} else {
@@ -195,20 +196,20 @@ func (h *tcpHandler) Proxy(gconn *netstack.GTCPConn, src, target netip.AddrPort)
 		return deny // == !open
 	}
 
-	var px ipn.Proxy = nil
-	if px, err = h.prox.ProxyFor(pid); err != nil || px == nil {
-		return deny
-	}
-
-	if pid == ipn.Base { // see udp.go Connect
+	if isAnyBasePid(pids) { // see udp.go:Connect
 		if h.dnsOverride(gconn, target) {
 			// SocketSummary not sent; x.DNSSummary supercedes it
 			return allow
 		} // else not a dns request
 	} // if ipn.Exit then let it connect as-is (aka exit)
 
+	var px ipn.Proxy = nil
 	// pick all realips to connect to
 	for i, dstipp := range actualTargets {
+		if px, err = h.prox.ProxyTo(dstipp, uid, pids); err != nil || px == nil {
+			continue
+		}
+
 		if err = h.handle(px, gconn, boundSrc, dstipp, smm); err == nil {
 			return allow
 		} // else try the next realip
@@ -226,11 +227,10 @@ func (h *tcpHandler) Proxy(gconn *netstack.GTCPConn, src, target netip.AddrPort)
 // handle connects to the target via the proxy, and pipes data between the src, target; thread-safe.
 func (h *tcpHandler) handle(px ipn.Proxy, src net.Conn, boundSrc, target netip.AddrPort, smm *SocketSummary) (err error) {
 	var pc protect.Conn
-
-	start := time.Now()
 	var dst net.Conn
 
-	// TODO: handle wildcard addrs?
+	start := time.Now()
+
 	// github.com/google/gvisor/blob/5ba35f516b5c2/test/benchmarks/tcp/tcp_proxy.go#L359
 	// ref: stackoverflow.com/questions/63656117
 	// ref: stackoverflow.com/questions/40328025
@@ -258,6 +258,7 @@ func (h *tcpHandler) handle(px ipn.Proxy, src net.Conn, boundSrc, target netip.A
 	// pc.RemoteAddr may be that of the proxy, not the actual dst
 	// ex: pc.RemoteAddr is 127.0.0.1 for Orbot
 	smm.Target = target.Addr().String()
+	smm.PID = px.ID()
 
 	if err != nil {
 		log.W("tcp: err dialing %s proxy(%s) to dst(%v) for %s: %v", smm.ID, px.ID(), target, smm.UID, err)

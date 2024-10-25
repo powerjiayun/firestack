@@ -50,6 +50,7 @@ type udpHandler struct {
 var (
 	errNoIPsForDomain  = errors.New("dns: no ips")
 	errIcmpFirewalled  = errors.New("icmp: firewalled")
+	errNoProxyID       = errors.New("no proxy id")
 	errUdpFirewalled   = errors.New("udp: firewalled")
 	errUdpInFirewalled = errors.New("udp: ingress firewalled")
 	errUdpSetupConn    = errors.New("udp: could not create conn")
@@ -107,9 +108,9 @@ func NewUDPHandler(pctx context.Context, resolver dnsx.Resolver, prox ipn.Proxie
 
 func (h *udpHandler) ReverseProxy(gconn *netstack.GUDPConn, in net.Conn, to, from netip.AddrPort) (ok bool) {
 	fm := h.onInflow(to, from)
-	cid, pid, uid, _ := h.judge(fm)
-	smm := udpSummary(cid, pid, uid, from.Addr())
-	if pid == ipn.Block {
+	cid, uid, _, pids := h.judge(fm)
+	smm := udpSummary(cid, uid, from.Addr())
+	if isAnyBlockPid(pids) {
 		log.I("udp: %s reverse: block %s -> %s", cid, from, to)
 		clos(gconn, in)
 		h.queueSummary(smm.done(errUdpInFirewalled))
@@ -142,10 +143,10 @@ func (h *udpHandler) Error(gconn *netstack.GUDPConn, src, target netip.AddrPort,
 		return
 	}
 	res, _, _, _ := h.onFlow(src, target)
-	cid, pid, uid, _ := h.judge(res)
-	smm := udpSummary(cid, pid, uid, target.Addr())
+	cid, uid, _, pids := h.judge(res)
+	smm := udpSummary(cid, uid, target.Addr())
 
-	if pid == ipn.Block {
+	if isAnyBlockPid(pids) {
 		err = errUdpFirewalled
 	}
 	h.queueSummary(smm.done(err))
@@ -192,11 +193,11 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	// flow is alg/nat-aware, do not change target or any addrs
 	res, undidAlg, realips, domains := h.onFlow(src, target)
 	actualTargets := makeIPPorts(realips, target, 0)
-	cid, pid, uid, fid := h.judge(res, domains, target.String())
+	cid, uid, fid, pids := h.judge(res, domains, target.String())
 	if len(actualTargets) > 0 {
 		smmTarget = actualTargets[0].Addr()
 	}
-	smm = udpSummary(cid, pid, uid, smmTarget)
+	smm = udpSummary(cid, uid, smmTarget)
 
 	if h.status.Load() == HDLEND {
 		log.D("udp: connect: %s %v => %v, end", cid, src, target)
@@ -207,7 +208,8 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 		return nil, smm, errUdpUnconnected
 	}
 
-	if pid == ipn.Block {
+	if isAnyBlockPid(pids) {
+		smm.PID = ipn.Block
 		if undidAlg && len(realips) <= 0 && len(domains) > 0 {
 			err = errNoIPsForDomain
 		} else {
@@ -243,7 +245,7 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	// as seen (with Flow) is owned by Rethink, then expect the conn
 	// to be marked ipn.Base for queries sent to tunnel's fake DNS addr
 	// and ipn.Exit for anywhere else.
-	if pid == ipn.Base {
+	if isAnyBasePid(pids) {
 		if h.dnsOverride(gconn, target) {
 			// SocketSummary is not sent to listener; x.DNSSummary is
 			return nil, smm, nil // connect, no dst
@@ -251,23 +253,38 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	} // else: proxy src to dst
 
 	var px ipn.Proxy
-	if px, err = h.prox.ProxyFor(pid); err != nil || px == nil {
-		log.W("udp: connect: %s failed to get proxy for %s: %v", cid, pid, err)
-		return nil, smm, err // disconnect
-	}
-
-	boundSrc := makeAnyAddrPort(src)
 	var errs error
 	var selectedTarget netip.AddrPort
+
+	muxpid := h.mux.pid(src) // may be empty
+	if mux && len(muxpid) > 0 {
+		ok := containsPid(pids, muxpid)
+		if !ok {
+			log.E("udp: connect: %s mux: %s => %s muxed-pid %s not in pids %s",
+				cid, src, target, muxpid, pids)
+			return nil, smm, errProxyMismatch // disconnect
+		}
+		log.D("udp: connect: %s mux: %s => %s using muxed-pid %s; discard pids %s",
+			cid, src, target, muxpid, pids)
+		pids = []string{muxpid}
+	}
 	// note: fake-dns-ips shouldn't be un-nated / un-alg'd
 	for i, dstipp := range actualTargets {
+		if px, err = h.prox.ProxyTo(dstipp, uid, pids); err != nil || px == nil {
+			log.W("udp: connect: %s failed to get proxy from %s: %v", cid, pids, err)
+			errs = err // disconnect if loop terminates
+			continue
+		}
 		selectedTarget = dstipp
 		if mux { // mux is not supported by all proxies (few like Exit, Base, WG support it)
-			pc, err = h.mux.associate(cid, pid, uid, src, selectedTarget, px.Dialer().Announce, vendor(dmx))
-		} else if settings.PortForward.Load() {
-			pc, err = px.Dialer().DialBind("udp", boundSrc.String(), selectedTarget.String())
+			pc, err = h.mux.associate(cid, px.ID(), uid, src, selectedTarget, px.Dialer().Announce, vendor(dmx))
 		} else {
-			pc, err = px.Dialer().Dial("udp", selectedTarget.String())
+			if settings.PortForward.Load() {
+				boundSrc := makeAnyAddrPort(src)
+				pc, err = px.Dialer().DialBind("udp", boundSrc.String(), selectedTarget.String())
+			} else {
+				pc, err = px.Dialer().Dial("udp", selectedTarget.String())
+			}
 		}
 		if err == nil {
 			errs = nil // reset errs
@@ -286,6 +303,9 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	// pc.RemoteAddr may be that of the proxy, not the actual dst
 	// ex: pc.RemoteAddr is 127.0.0.1 for Orbot
 	smm.Target = selectedTarget.Addr().String()
+	if px != nil {
+		smm.PID = px.ID()
+	}
 
 	if errs != nil {
 		return nil, smm, errs // disconnect

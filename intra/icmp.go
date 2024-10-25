@@ -67,8 +67,8 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 	res, undidAlg, realips, doms := h.flow(source, target)
 	dst := oneRealIPPort(realips, target)
 	// on Android, uid is always "unknown" for icmp
-	cid, pid, uid, _ := h.judge(res, doms, target.String())
-	smm := icmpSummary(cid, pid, uid)
+	cid, uid, _, pids := h.judge(res)
+	smm := icmpSummary(cid, uid)
 
 	defer func() {
 		smm.Tx = int64(tx)
@@ -83,7 +83,8 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 		return false // not handled
 	}
 
-	if pid == ipn.Block {
+	if isAnyBlockPid(pids) {
+		smm.PID = ipn.Block
 		if undidAlg && len(realips) <= 0 && len(doms) > 0 {
 			err = errNoIPsForDomain
 		} else {
@@ -96,8 +97,8 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 		return false // denied
 	}
 
-	if px, err = h.prox.ProxyFor(pid); err != nil || px == nil {
-		log.E("t.icmp: egress: no proxy(%s); err %v", pid, err)
+	if px, err = h.prox.ProxyTo(dst, uid, pids); err != nil || px == nil {
+		log.E("t.icmp: egress: no proxy(%s); err %v", pids, err)
 		return false // denied
 	}
 
@@ -105,14 +106,16 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 
 	uc, err := px.Dialer().Probe(proto, anyaddr)
 	defer core.Close(uc)
-
 	ucnil := uc == nil || core.IsNil(uc)
+
 	smm.Target = dst.Addr().String()
+	smm.PID = px.ID()
+
 	if err != nil || ucnil { // nilaway: tx.socks5 returns nil conn even if err == nil
 		if err == nil {
 			err = unix.ENETUNREACH
 		}
-		log.E("t.icmp: egress: dial(%s); hasConn? %s(%t); err %v", dst, pid, !ucnil, err)
+		log.E("t.icmp: egress: dial(%s); hasConn? %s(%t); err %v", dst, pids, !ucnil, err)
 		return false // unhandled
 	}
 

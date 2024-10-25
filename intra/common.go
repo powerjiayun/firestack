@@ -536,9 +536,9 @@ func filterFamilyForDialing(ipcsv string) string {
 	return strings.Join(filtered, ",")
 }
 
-// returns conn-id,  proxy-id, user-id, flow-id.
-// conn-id may be empty.
-func (h *baseHandler) judge(decision *Mark, aux ...string) (cid, pid, uid, fid string) {
+// returns conn-id, user-id, flow-id.
+// all four values may be empty.
+func (h *baseHandler) judge(decision *Mark, aux ...string) (cid, uid, fid string, pids []string) {
 	if decision == nil {
 		return
 	}
@@ -550,26 +550,20 @@ func (h *baseHandler) judge(decision *Mark, aux ...string) (cid, pid, uid, fid s
 	}
 	cid = decision.CID
 	fid = h.flowID(uid, aux...)
-	pid = h.selectPid(decision.PIDCSV, fid)
+
+	if len(decision.PIDCSV) > 0 {
+		for _, v := range strings.Split(decision.PIDCSV, ",") {
+			if v == ipn.Block { // block overrides all other pids
+				pids = []string{ipn.Block}
+				return
+			}
+			if len(v) > 0 {
+				pids = append(pids, v)
+			}
+		}
+	}
+
 	return
-}
-
-func (h *baseHandler) selectPid(pidcsv, fid string) string {
-	if len(pidcsv) <= 0 {
-		return ipn.Block
-	}
-	all := strings.Split(pidcsv, ",")
-	if firstEmpty(all) {
-		return ipn.Block
-	}
-
-	pid, err := h.prox.PinOne(fid, all)
-	logev(err)("intra: selectPid: %s for %s; err? %v", pid, fid, err)
-	if err != nil {
-		return ipn.Block
-	} else {
-		return pid
-	}
 }
 
 func conn2str(a net.Conn, b net.Conn) string {
@@ -600,4 +594,21 @@ func ntoa(n string) int32 {
 
 func firstEmpty(arr []string) bool {
 	return len(arr) <= 0 || len(arr[0]) <= 0
+}
+
+func isAnyBlockPid(pids []string) bool {
+	return containsPid(pids, ipn.Block)
+}
+
+func isAnyBasePid(pids []string) bool {
+	return containsPid(pids, ipn.Base)
+}
+
+func containsPid(pids []string, pid string) bool {
+	for _, v := range pids {
+		if v == pid {
+			return true
+		}
+	}
+	return false
 }

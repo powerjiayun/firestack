@@ -82,22 +82,20 @@ var (
 	errNone = errors.New("no error")
 )
 
-func icmpSummary(id, pid, uid string) *SocketSummary {
+func icmpSummary(id, uid string) *SocketSummary {
 	return &SocketSummary{
 		Proto: ProtoTypeICMP,
 		ID:    id,
-		PID:   pid,
 		UID:   uid,
 		start: time.Now(),
 		Msg:   errNone.Error(),
 	}
 }
 
-func tcpSummary(id, pid, uid string, dst netip.Addr) *SocketSummary {
+func tcpSummary(id, uid string, dst netip.Addr) *SocketSummary {
 	return &SocketSummary{
 		Proto:  ProtoTypeTCP,
 		ID:     id,
-		PID:    pid,
 		UID:    uid,
 		Target: dst.String(),
 		start:  time.Now(),
@@ -105,8 +103,8 @@ func tcpSummary(id, pid, uid string, dst netip.Addr) *SocketSummary {
 	}
 }
 
-func udpSummary(id, pid, uid string, dst netip.Addr) *SocketSummary {
-	s := tcpSummary(id, pid, uid, dst)
+func udpSummary(id, uid string, dst netip.Addr) *SocketSummary {
+	s := tcpSummary(id, uid, dst)
 	s.Proto = ProtoTypeUDP
 	return s
 }

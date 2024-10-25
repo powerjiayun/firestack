@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"net/netip"
 	"os"
 	"strings"
@@ -86,7 +85,7 @@ var (
 	errNotPinned            = errors.New("auto: another proxy pinned")
 	errInvalidAddr          = errors.New("proxy: invaild ip:port")
 	errUnreachable          = errors.New("proxy: destination unreachable")
-	errMissingFlowID        = errors.New("proxy: missing flow id")
+	errMissingProxyID       = errors.New("proxy: missing proxy id")
 )
 
 const (
@@ -97,6 +96,7 @@ const (
 	responseHeaderTimeout time.Duration = 60 * time.Second
 	tzzTimeout            time.Duration = 2 * time.Minute  // time between new connections before proxies transition to idle
 	lastOKThreshold       time.Duration = 10 * time.Minute // time between last OK and now before pinging & un-pinning
+	pintimeout            time.Duration = 10 * time.Minute // time to keep a pin
 )
 
 // type checks
@@ -128,10 +128,10 @@ type Proxy interface {
 
 type Proxies interface {
 	x.Proxies
-	// Get returns a transport from this multi-transport.
+	// ProxyFor returns a transport from this multi-transport.
 	ProxyFor(id string) (Proxy, error)
-	// PinOne pins a proxy to one from the list of pids.
-	PinOne(fid string, pids []string) (string, error)
+	// ProxyTo returns the proxy to use for ipp from given pids.
+	ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Proxy, error)
 	// RefreshProto broadcasts proto change to all active proxies.
 	RefreshProto(l3 string)
 	// LiveProxies returns a csv of active proxies.
@@ -142,13 +142,16 @@ type Proxies interface {
 
 type proxifier struct {
 	sync.RWMutex
-	p map[string]Proxy
+
+	ctx context.Context
+	p   map[string]Proxy
 
 	ctl protect.Controller    // dial control provider
 	rev netstack.GConnHandler // may be nil
 	obs x.ProxyListener       // proxy observer
 
-	pinned *core.Sieve[string, string] // flowid -> proxyid
+	ipPins  *core.Sieve[netip.AddrPort, string]           // ipp -> proxyid
+	uidPins *core.Sieve2K[string, netip.AddrPort, string] // uid -> [dst -> proxyid]
 
 	// immutable proxies
 	exit     *exit   // exit proxy, never changes
@@ -172,6 +175,7 @@ func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener)
 	}
 
 	pxr := &proxifier{
+		ctx:    pctx,
 		p:      make(map[string]Proxy),
 		ctl:    c,
 		obs:    o,
@@ -182,7 +186,8 @@ func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener)
 	pxr.base = NewBaseProxy(c)
 	pxr.grounded = NewGroundProxy()
 	pxr.auto = NewAutoProxy(pctx, pxr)
-	pxr.pinned = core.NewSieve[string, string](pctx, 10*time.Minute)
+	pxr.ipPins = core.NewSieve[netip.AddrPort, string](pctx, pintimeout)
+	pxr.uidPins = core.NewSieve2K[string, netip.AddrPort, string](pctx, pintimeout)
 
 	pxr.warpc = warp.NewWarpClient(pctx, c)
 	pxr.add(pxr.exit)     // fixed
@@ -270,68 +275,14 @@ func (px *proxifier) RemoveProxy(id string) bool {
 	return false
 }
 
-func (px *proxifier) PinOne(fid string, pids []string) (string, error) {
-	if len(pids) <= 0 {
-		return "", errNotPinned
-	} else if len(fid) <= 0 {
-		return "", errMissingFlowID
-	} else if len(pids) == 1 {
-		pid := pids[0]
-		// ok is called to make sure the proxy is ready-to-go
-		// ignore err as there's no other pid to choose from
-		_ = px.ok(pid)
-		px.pinned.Put(fid, pid)
-		return pids[0], nil
+func (px *proxifier) ok(p Proxy) error {
+	if p == nil {
+		return errProxyNotFound
 	}
 
-	all := make(map[string]struct{}, len(pids))
-	for _, pid := range pids {
-		all[pid] = struct{}{}
-	}
-
-	if pid, pinok := px.pinned.Get(fid); pinok {
-		_, chosen := all[pid]
-
-		if !chosen {
-			px.pinned.Del(fid)
-			log.D("proxy: pin: unpinned %s from %s; not in %v", fid, pid, pids)
-			goto pinNew
-		}
-
-		delete(all, pid) // mark visited
-		err := px.ok(pid)
-
-		loged(err)("proxy: pin: %s from %s; err? %v", fid, pid, err)
-		if err == nil {
-			return pid, nil
-		} // else: fallthrough to pinNew
-	}
-
-pinNew:
-	notok := make([]string, 0)
-	for pid := range all {
-		if err := px.ok(pid); err != nil {
-			notok = append(notok, pid)
-			continue
-		}
-		px.pinned.Put(fid, pid)
-		log.I("proxy: pin: pinned %s to %s; discarded: %v", fid, pid, notok)
-		return pid, nil
-	}
-
-	randpid := pids[rand.IntN(len(all))]
-	log.W("proxy: pin: %s to random %s; all not ok: %v", fid, randpid, notok)
-	return randpid, nil
-}
-
-func (px *proxifier) ok(pid string) error {
+	pid := p.ID()
 	if local(pid) { // fast path for local proxies which are always ok
 		return nil
-	}
-
-	p, err := px.ProxyFor(pid)
-	if err != nil {
-		return err
 	}
 
 	if r := p.Router(); r != nil {
@@ -349,12 +300,145 @@ func (px *proxifier) ok(pid string) error {
 				p.Ping()
 			}
 		} // else: fallthrough
-	}
+	} // else: no router; nothing to do
 	if p.Status() == END {
 		return errProxyStopped
 	} // TODO: err on TNT, TKO?
 
 	return nil // ok
+}
+
+// ProxyTo implements Proxies.
+// May return both a Proxy and an error, in which case, the error
+// denotes that while the Proxy is not healthy, it is still registered.
+func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Proxy, error) {
+	if len(pids) <= 0 || firstEmpty(pids) {
+		return nil, errMissingProxyID
+	}
+	if !ipp.IsValid() {
+		return nil, errMissingAddress
+	}
+	if len(pids) == 1 { // there's no other pid to choose from
+		return px.pinID(uid, ipp, pids[0])
+	}
+
+	var lopinned string
+	all := make(map[string]struct{}, len(pids))
+	for _, pid := range pids {
+		all[pid] = struct{}{}
+	}
+
+	pinnedpid, pinok := px.getpin(uid, ipp)
+	_, chosen := all[pinnedpid]
+	delete(all, pinnedpid) // mark visited
+	if pinok && chosen && local(pinnedpid) {
+		// always favour remote proxy pins over local, if any
+		lopinned = pinnedpid
+	} else if pinok && chosen {
+		p, err := px.pinID(uid, ipp, pinnedpid)
+		if err == nil {
+			return p, nil
+		} // else: fallthrough
+	} else if pinok && !chosen {
+		px.delpin(uid, ipp)
+	}
+
+	ippstr := ipp.String()
+	notokproxies := make([]string, 0)
+	norouteproxies := make([]string, 0)
+	missproxies := make([]string, 0)
+	loproxies := make([]string, 0)
+	if len(lopinned) > 0 { // lopinned may be empty
+		loproxies = append(loproxies, lopinned)
+	}
+
+	for _, pid := range pids {
+		if pid == pinnedpid { // already tried above
+			continue
+		}
+		if local(pid) { // skip local; prefer remote
+			loproxies = append(loproxies, pid)
+			continue // process later
+		}
+
+		p, err := px.ProxyFor(pid)
+		if err != nil { // proxy 404
+			missproxies = append(missproxies, pid)
+			continue
+		}
+
+		if r := p.Router(); r != nil {
+			canroute := r.Contains(ippstr)
+			if canroute {
+				err := px.pin(uid, ipp, p)
+				if err == nil {
+					return p, nil
+				} // else: proxy not ok
+				notokproxies = append(notokproxies, pid)
+			} // else: proxy cannot route
+			norouteproxies = append(norouteproxies, pid)
+		} else {
+			err := px.pin(uid, ipp, p)
+			if err == nil {
+				return p, nil
+			} // else: proxy not ok
+			notokproxies = append(notokproxies, pid)
+		}
+	}
+
+	// lopinned is always the first element, if any.
+	for _, pid := range loproxies {
+		// ignore err, as it unlikely for local proxies
+		// that are always available, and are presumed to
+		// be gateways (route all ips)
+		if p, _ := px.pinID(uid, ipp, pid); p != nil {
+			return p, nil
+		}
+		missproxies = append(missproxies, pid)
+	}
+
+	log.VV("proxy: pin: %s+%s; miss: %v; notok: %v; noroute: %v",
+		uid, ipp, missproxies, notokproxies, norouteproxies)
+	return nil, errProxyNotFound
+}
+
+func (px *proxifier) pinID(uid string, ipp netip.AddrPort, id string) (Proxy, error) {
+	p, err := px.ProxyFor(id)
+	if err != nil {
+		return nil, err
+	}
+	err = px.pin(uid, ipp, p)
+	return p, err
+}
+
+func (px *proxifier) pin(uid string, ipp netip.AddrPort, p Proxy) error {
+	err := px.ok(p) // ok is called to ensure p is ready-to-go
+	if err == nil {
+		px.uidPins.Put(uid, ipp, p.ID())
+		px.ipPins.Put(ipp, p.ID())
+	}
+	loged(err)("proxy: pin: router? %t, ok? %t; %s from %s; err? %v",
+		p.Router() != nil, err == nil, ipp, p.ID(), err)
+	return err
+}
+
+func (px *proxifier) delpin(uid string, ipp netip.AddrPort) {
+	px.uidPins.Del(uid, ipp)
+	px.ipPins.Del(ipp)
+}
+
+func (px *proxifier) getpin(uid string, ipp netip.AddrPort) (string, bool) {
+	if id, ok := px.uidPins.Get(uid, ipp); ok {
+		return id, ok
+	}
+	return px.ipPins.Get(ipp)
+}
+
+func (px *proxifier) clearpins() (int, int) {
+	totips := px.ipPins.Clear()
+	totuids := px.uidPins.Clear()
+
+	return totips, totuids
 }
 
 // ProxyFor returns the proxy for the given id or an error.
@@ -428,13 +512,13 @@ func (px *proxifier) stopProxies() {
 }
 
 func (px *proxifier) RefreshProxies() (string, error) {
+	ptot, ptotu := px.clearpins()
+
 	px.Lock()
 	defer px.Unlock()
 
-	ptot := px.pinned.Clear()
-
 	tot := len(px.p)
-	log.I("proxy: refresh pxs: %d / remove pins: %d", tot, ptot)
+	log.I("proxy: refresh pxs: %d / removed pins: %d %d", tot, ptot, ptotu)
 
 	var which = make([]string, 0, len(px.p))
 	for _, p := range px.p {
@@ -763,4 +847,8 @@ func closed[T any](ch <-chan T) bool {
 	default:
 	}
 	return false
+}
+
+func firstEmpty(arr []string) bool {
+	return len(arr) <= 0 || len(arr[0]) <= 0
 }
