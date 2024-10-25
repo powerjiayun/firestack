@@ -142,11 +142,17 @@ func (c *cres) copy() *cres {
 
 // String implements fmt.Stringer
 func (cr *cres) String() string {
+	if cr == nil {
+		return "<nil>"
+	}
 	return fmt.Sprintf("bumps=%d; expiry=%s; s=%s", cr.bumps, cr.expiry, cr.s)
 }
 
 // String implements fmt.Stringer
 func (t *ctransport) String() string {
+	if t == nil {
+		return "<nil>"
+	}
 	return fmt.Sprintf("ttl=%s; bumps=%d; size=%d", t.ttl, t.bumps, t.size)
 }
 

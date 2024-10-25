@@ -255,6 +255,9 @@ type client struct {
 
 // String implements fmt.Stringer
 func (c *client) String() string {
+	if c == nil {
+		return "<nil>"
+	}
 	return fmt.Sprintf("use4/6? %t/%t; oneshot? %t; tracked %d; closed %t",
 		c.use4, c.use6, c.oneshot, len(c.tracker), c.closed.Load())
 }

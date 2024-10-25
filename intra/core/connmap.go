@@ -165,6 +165,9 @@ func (h *cm) Len() int {
 }
 
 func (c *connstat) String() string {
+	if c == nil {
+		return "<nil>"
+	}
 	return fmt.Sprintf("%s:%d[%s]", formatTime(c.t), len(c.c), conn2str(c.c...))
 }
 

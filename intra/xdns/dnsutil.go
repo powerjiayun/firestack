@@ -267,11 +267,11 @@ func GetInterestingRData(msg *dns.Msg) string {
 				if len(ipcsv) > 0 {
 					ipcsv += "," + r.String()
 				} else {
-					log.V("dnsutil: RData: svcb(%s)", r.String())
+					log.V("dnsutil: RData: svcb(%s)", r)
 					return svcbstr(r)
 				}
 			} else {
-				log.D("dnsutil: RData: ignored svcb(%s) for ipcsv(%s)", r.String(), ipcsv)
+				log.D("dnsutil: RData: ignored svcb(%s) for ipcsv(%s)", r, ipcsv)
 			}
 			continue
 		case *dns.HTTPS:
@@ -280,7 +280,7 @@ func GetInterestingRData(msg *dns.Msg) string {
 				if len(ipcsv) > 0 {
 					ipcsv += "," + r.String()
 				} else {
-					log.V("dnsutil: RData: https(%s)", r.String())
+					log.V("dnsutil: RData: https(%s)", r)
 					return httpsstr(r)
 				}
 			} else {
@@ -290,7 +290,7 @@ func GetInterestingRData(msg *dns.Msg) string {
 				// ech="AEX+DQBB4gAgACBdYSRjAsOpA+y22/VDM2YR/3fxGdNuepJpi9gJZm8nPgAEAAEAAQASY2xvdWRmbGFyZS1lY2guY29tAAA="
 				// ipv6hint="2606:4700:3030::6815:533e,2606:4700:3030::ac43:d6f6")
 				// for ipcsv(104.21.83.62,172.67.214.246,2606:4700:3030::6815:533e,2606:4700:3030::ac43:d6f6)
-				log.D("dnsutil: RData: ignored https(%s) for ipcsv(%s)", r.String(), ipcsv)
+				log.D("dnsutil: RData: ignored https(%s) for ipcsv(%s)", r, ipcsv)
 			}
 			continue
 		case *dns.NSEC:
@@ -888,7 +888,7 @@ func IPHints(msg *dns.Msg, x dns.SVCBKey) []*netip.Addr {
 		switch rec := answer.(type) {
 		case *dns.SVCB:
 			for _, kv := range rec.Value {
-				log.V("dnsutil: svcb(%s): current k(%v)/v(%v)", qname, kv.Key(), kv.String())
+				log.V("dnsutil: svcb(%s): current k(%v)/v(%s)", qname, kv.Key(), kv)
 				if kv.Key() != x {
 					continue
 				}
@@ -904,7 +904,7 @@ func IPHints(msg *dns.Msg, x dns.SVCBKey) []*netip.Addr {
 			}
 		case *dns.HTTPS:
 			for _, kv := range rec.Value {
-				log.V("dnsutil: https(%s): current k(%v)/v(%v)", qname, kv.Key(), kv.String())
+				log.V("dnsutil: https(%s): current k(%v)/v(%s)", qname, kv.Key(), kv)
 				if kv.Key() != x {
 					continue
 				}

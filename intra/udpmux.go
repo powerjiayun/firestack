@@ -55,6 +55,9 @@ type stats struct {
 }
 
 func (s *stats) String() string {
+	if s == nil {
+		return "<nil>"
+	}
 	return fmt.Sprintf("tx: %d, rx: %d, conns: %d, dur: %ds", s.tx.Load(), s.rx.Load(), s.dxcount.Load(), int64(s.dur.Seconds()))
 }
 

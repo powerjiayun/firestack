@@ -46,6 +46,10 @@ type ifstats struct {
 }
 
 func (s *ifstats) String() string {
+	if s == nil {
+		return "<nil>"
+	}
+
 	d := s.lastTouched.UnixMilli()
 	rx := s.TotalRx()
 	tx := s.TotalTx()

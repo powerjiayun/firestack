@@ -403,7 +403,7 @@ func (t *piph2) forward(network, addr string) (protect.Conn, error) {
 	}
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &trace))
 
-	log.D("piph2: req %s", u.String())
+	log.D("piph2: req %s", u)
 	// infinite length? doesn't work with cloudflare
 	// req.ContentLength = -1
 	req.Close = false // allow keep-alive
@@ -450,7 +450,7 @@ func (t *piph2) forward(network, addr string) (protect.Conn, error) {
 			incomingCh <- nil
 			closePipe(readable, writable)
 		} else {
-			log.D("piph2: duplex %s", u.String())
+			log.D("piph2: duplex %s", u)
 			// github.com/posener/h2conn/blob/13e7df33ed1/client.go
 			res.Request = req
 			t.status.Store(TOK)

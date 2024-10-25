@@ -126,6 +126,9 @@ type TunMode struct {
 }
 
 func (t *TunMode) String() string {
+	if t == nil {
+		return "<nil>"
+	}
 	d := func() string {
 		switch t.DNSMode.Load() {
 		case DNSModeIP:
@@ -194,6 +197,9 @@ type DNSOptions struct {
 }
 
 func (d *DNSOptions) String() string {
+	if (d == nil) || (len(d.ipp) <= 0) {
+		return "<nil>"
+	}
 	return d.AddrPort()
 }
 
@@ -334,6 +340,9 @@ func NewProxyOptions(ip string, port string) *ProxyOptions {
 }
 
 func (p *ProxyOptions) String() string {
+	if p == nil {
+		return "<nil>"
+	}
 	return p.Auth.User + "," + p.Auth.Password + "," + p.IPPort
 }
 
