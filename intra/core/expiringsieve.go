@@ -8,8 +8,27 @@ package core
 
 import (
 	"context"
+	"sync"
 	"time"
 )
+
+// Sieve2K is a map of expiring maps. The outer map is keyed to K1,
+// while the inner expiring maps are keyed to K2.
+type Sieve2K[K1, K2 comparable, V any] struct {
+	ctx  context.Context
+	mu   sync.RWMutex // protects m
+	m    map[K1]*Sieve[K2, V]
+	life time.Duration
+}
+
+// NewSieve2K returns a new Sieve2K with keys expiring after lifetime.
+func NewSieve2K[K1, K2 comparable, V any](ctx context.Context, dur time.Duration) *Sieve2K[K1, K2, V] {
+	return &Sieve2K[K1, K2, V]{
+		ctx:  ctx,
+		m:    make(map[K1]*Sieve[K2, V]),
+		life: dur,
+	}
+}
 
 // Sieve is a thread-safe map with expiring keys.
 type Sieve[K comparable, V any] struct {
@@ -47,4 +66,82 @@ func (s *Sieve[K, V]) Len() int {
 // Clear removes all elements from the sieve.
 func (s *Sieve[K, V]) Clear() int {
 	return s.c.Clear()
+}
+
+// Get returns the value associated with the given key,
+// and a boolean indicating whether the key was found.
+func (s *Sieve2K[K1, K2, V]) Get(k1 K1, k2 K2) (zz V, ok bool) {
+	s.mu.RLock()
+	inn := s.m[k1]
+	s.mu.RUnlock()
+
+	if inn != nil {
+		return inn.Get(k2)
+	}
+	return
+}
+
+// Put adds an element to the sieve with the given key and value.
+func (s *Sieve2K[K1, K2, V]) Put(k1 K1, k2 K2, v V) (replaced bool) {
+	s.mu.RLock()
+	inn := s.m[k1]
+	s.mu.RUnlock()
+
+	if inn == nil {
+		s.mu.Lock()
+		inn = s.m[k1]
+		if inn == nil {
+			inn = NewSieve[K2, V](s.ctx, s.life)
+			s.m[k1] = inn
+		}
+		s.mu.Unlock()
+	}
+
+	return inn.Put(k2, v)
+}
+
+// Del removes the element with the given key from the sieve.
+func (s *Sieve2K[K1, K2, V]) Del(k1 K1, k2 K2) {
+	s.mu.RLock()
+	inn := s.m[k1]
+	if inn != nil {
+		inn.Del(k2)
+	}
+	empty := inn.Len() == 0
+	s.mu.RUnlock()
+
+	if empty {
+		s.mu.Lock()
+		inn = s.m[k1]
+		if inn != nil && inn.Len() == 0 {
+			delete(s.m, k1)
+		}
+		s.mu.Unlock()
+	}
+}
+
+// Len returns the number of elements in the sieve.
+func (s *Sieve2K[K1, K2, V]) Len() (n int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, inn := range s.m {
+		if inn == nil { // unlikely
+			continue
+		}
+		n += inn.Len()
+	}
+	return
+}
+
+// Clear removes all elements from the sieve.
+func (s *Sieve2K[K1, K2, V]) Clear() (n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, inn := range s.m {
+		n += inn.Clear()
+	}
+	clear(s.m)
+	return
 }
