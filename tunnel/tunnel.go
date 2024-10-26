@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	x "github.com/celzero/firestack/intra/backend"
@@ -292,17 +293,27 @@ func (t *gtunnel) Stat() (*x.NetStat, error) {
 	return st, err
 }
 
+// copy so golang gc may not close orig fd
 func dup(fd int) (int, error) {
 	if fd < 0 {
-		return -1, errInvalidTunFd
+		return 0, errInvalidTunFd
 	}
+	// from: github.com/mdlayher/socket/blob/9c51a391b/conn.go#L309
+	// fctnl(2) to dup the fd & set cloexec in one syscall
+	newfd, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+	if err == nil { // success
+		return newfd, nil
+	} else if err == unix.EINVAL { // fallback
+		// Mirror the standard library: avoid racing a fork/exec with dup
+		// so that child does not inherit socket fds unexpectedly.
+		syscall.ForkLock.RLock()
+		defer syscall.ForkLock.RUnlock()
 
-	// copy so golang gc may not close orig fd
-	newfd, err := unix.Dup(fd)
-	if err != nil {
-		return -1, err
-	}
-
-	// kt-land gives up its ownership of fd
-	return newfd, nil
+		newfd, err := unix.Dup(fd)
+		if err == nil {
+			unix.CloseOnExec(newfd)
+		}
+		return newfd, err
+	} // other errors?
+	return 0, os.NewSyscallError("fcntl", err)
 }
