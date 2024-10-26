@@ -486,20 +486,22 @@ func timedout(err error) bool {
 
 type muxTable struct {
 	sync.Mutex
-	t map[netip.AddrPort]*muxer // src -> dst endpoint independent nat
+	t map[string]map[netip.AddrPort]*muxer // pid -> [src -> dst] endpoint independent nat
 }
 
 type assocFn func(net, dst string) (net.PacketConn, error)
 
 func newMuxTable() *muxTable {
-	return &muxTable{t: make(map[netip.AddrPort]*muxer)}
+	return &muxTable{t: make(map[string]map[netip.AddrPort]*muxer)}
 }
 
 func (e *muxTable) pid(src netip.AddrPort) string {
 	e.Lock()
 	defer e.Unlock()
-	if mxr := e.t[src]; mxr != nil {
-		return mxr.pid
+	for _, pxm := range e.t {
+		if mxr := pxm[src]; mxr != nil {
+			return mxr.pid
+		}
 	}
 	return ""
 }
@@ -507,39 +509,44 @@ func (e *muxTable) pid(src netip.AddrPort) string {
 func (e *muxTable) associate(cid, pid, uid string, src, dst netip.AddrPort, mk assocFn, v vendor) (_ net.Conn, err error) {
 	e.Lock() // lock
 
-	mxr := e.t[src]
-	if mxr == nil {
-		var pc net.PacketConn
+	pxm := e.t[pid]
+	if pxm == nil {
+		pxm = make(map[netip.AddrPort]*muxer)
+		e.t[pid] = pxm
+	}
 
+	mxr := pxm[src]
+	if mxr == nil {
 		// dst may be of a different family than src (4to6, 6to4 etc)
 		// and so, rely on dst to determine the family to listen on.
-		proto, anyaddr := anyaddrFor(dst)
+		proto := "udp6"
+		anyaddr := anyaddr6
+		if dst.Addr().Is4() {
+			proto = "udp4"
+			anyaddr = anyaddr4
+		}
+		anyaddrport := netip.AddrPortFrom(anyaddr, 0)
 		if settings.PortForward.Load() {
-			boundSrc := makeAnyAddrPort(src)
-			if boundSrc.IsValid() {
-				anyaddr = boundSrc.String()
-			}
-			if boundSrc.Addr().Is4() {
-				proto = "udp4"
-			} else {
-				proto = "udp6"
-			}
+			anyaddrport = netip.AddrPortFrom(anyaddr, src.Port())
 		}
 
-		pc, err = mk(proto, anyaddr)
+		pc, err := mk(proto, anyaddrport.String())
 
 		if err != nil {
 			core.Close(pc)
 			e.Unlock()      // unlock
 			return nil, err // return
 		}
-		mxr = newMuxer(cid, pid, uid, pc, v, func() {
+
+		mxr := newMuxer(cid, pid, uid, pc, v, func() {
 			e.dissociate(cid, pid, src)
 		})
-		e.t[src] = mxr
-		log.I("udp: mux: %s new assoc for %s via %s", cid, src, anyaddr)
-	} else if mxr.pid != pid {
-		// client rules prevent from associating w/ a different proxy
+		pxm[src] = mxr
+		log.I("udp: mux: %s new assoc for %s %s via %s",
+			cid, pid, src, anyaddrport)
+	}
+
+	if mxr.pid != pid {
 		log.E("udp: mux: %s assoc proxy mismatch: %s != %s or %s != %s",
 			cid, mxr.pid, pid, mxr.uid, uid)
 		e.Unlock()                   // unlock
@@ -567,7 +574,8 @@ func (e *muxTable) dissociate(cid, pid string, src netip.AddrPort) {
 
 	e.Lock()
 	defer e.Unlock()
-	delete(e.t, src)
+	pxm := e.t[pid] // may be nil and that's okay
+	delete(pxm, src)
 }
 
 func addr2netip(addr net.Addr) (zz netip.AddrPort) {

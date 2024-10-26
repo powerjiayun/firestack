@@ -258,14 +258,11 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	muxpid := h.mux.pid(src) // may be empty
 	if mux && len(muxpid) > 0 {
 		ok := containsPid(pids, muxpid)
-		if !ok {
-			log.E("udp: connect: %s mux: %s => %s muxed-pid %s not in pids %s",
+		if ok {
+			log.D("udp: connect: %s mux: %s => %s using muxed-pid %s; discard pids %s",
 				cid, src, target, muxpid, pids)
-			return nil, smm, errProxyMismatch // disconnect
-		}
-		log.D("udp: connect: %s mux: %s => %s using muxed-pid %s; discard pids %s",
-			cid, src, target, muxpid, pids)
-		pids = []string{muxpid}
+			pids = []string{muxpid}
+		} // else: mxr will dial this conn with a different pid
 	}
 	// note: fake-dns-ips shouldn't be un-nated / un-alg'd
 	for i, dstipp := range actualTargets {
