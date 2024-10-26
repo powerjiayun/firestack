@@ -47,6 +47,8 @@ type piph2 struct {
 	outbound      *protect.RDial // h2 dialer
 	opts          *settings.ProxyOptions
 
+	done context.CancelFunc
+
 	// mutable fields
 	lastdial *core.Volatile[time.Time] // last dial time
 	status   *core.Volatile[int]       // proxy status: TOK, TKO, END
@@ -193,16 +195,17 @@ func NewPipProxy(ctl protect.Controller, po *settings.ProxyOptions) (*piph2, err
 	if len(rsasig) == 0 {
 		return nil, errNoSig
 	}
-	dialer := protect.MakeNsRDial(RpnH2, ctl)
+	ctx, done := context.WithCancel(context.Background())
 	t := &piph2{
 		url:      parsedurl.String(),
 		hostname: parsedurl.Hostname(),
 		port:     port,
-		outbound: dialer,
+		outbound: protect.MakeNsRDial(RpnH2, ctx, ctl),
 		token:    po.Auth.User,
 		toksig:   po.Auth.Password,
 		rsasig:   rsasig,
 		status:   core.NewVolatile(TUP),
+		done:     done,
 		lastdial: core.NewVolatile(time.Time{}),
 		opts:     po,
 	}
@@ -259,6 +262,7 @@ func (t *piph2) Reaches(hostportOrIPPortCsv string) bool {
 
 func (t *piph2) Stop() error {
 	t.status.Store(END)
+	t.done()
 	return nil
 }
 

@@ -235,7 +235,7 @@ func fetchDNSCryptServerInfo(proxy *DcMulti, name string, stamp stamps.ServerSta
 	if px != nil {
 		relay, _ = px.ProxyFor(name)
 	}
-	dialer := protect.MakeNsRDial(name, proxy.ctl)
+	dialer := protect.MakeNsRDial(name, proxy.ctx, proxy.ctl)
 
 	ctx, done := context.WithCancel(proxy.ctx)
 	si := serverinfo{

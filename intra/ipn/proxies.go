@@ -155,6 +155,7 @@ type proxifier struct {
 
 	// immutable proxies
 	exit     *exit   // exit proxy, never changes
+	exit64   *exit64 // rpn64 proxy, never changes
 	base     *base   // base proxy, never changes
 	grounded *ground // grounded proxy, never changes
 	auto     *auto   // auto proxy, never changes
@@ -182,8 +183,9 @@ func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener)
 		protos: settings.IP46, // assume all routes ok (fail open)
 	}
 
-	pxr.exit = NewExitProxy(c)
-	pxr.base = NewBaseProxy(c)
+	pxr.exit = NewExitProxy(pctx, c)
+	pxr.exit64 = NewExit64Proxy(pctx, c)
+	pxr.base = NewBaseProxy(pctx, c)
 	pxr.grounded = NewGroundProxy()
 	pxr.auto = NewAutoProxy(pctx, pxr)
 	pxr.ipPins = core.NewSieve[netip.AddrPort, string](pctx, pintimeout)

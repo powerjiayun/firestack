@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -67,7 +68,7 @@ func main() {
 	}
 
 	log.Println("Trying split connection")
-	d := protect.MakeNsRDial("test", nil)
+	d := protect.MakeNsRDial("test", context.TODO(), nil)
 	splitConn, err := dialers.SplitDial(d, "tcp", addr.String())
 	if err != nil {
 		log.Fatalf("Could not establish a splitting socket: %v", err)

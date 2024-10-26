@@ -74,20 +74,20 @@ func NewTransport(ctx context.Context, id, ip, port string, px ipn.Proxies, ctl 
 }
 
 func newTransport(pctx context.Context, id string, do *settings.DNSOptions, px ipn.Proxies, ctl protect.Controller) (*transport, error) {
+	ctx, done := context.WithCancel(pctx)
+
 	// cannot be nil, see: ipn.Exit which the only proxy guaranteed to be connected to the internet;
 	// ex: ipn.Base routed back within the tunnel (rethink's traffic routed back into rethink).
 	if px == nil {
 		return nil, dnsx.ErrNoProxyProvider
 	}
 	relay, _ := px.ProxyFor(id)
-	d := protect.MakeNsRDial(id, ctl)
-	ctx, done := context.WithCancel(pctx)
 	tx := &transport{
 		done:     done,
 		id:       id,
 		addrport: do.AddrPort(), // may be hostname:port or ip:port
 		status:   dnsx.Start,
-		dialer:   d,
+		dialer:   protect.MakeNsRDial(id, ctx, ctl),
 		proxies:  px,    // never nil; see above
 		relay:    relay, // may be nil
 		est:      core.NewP50Estimator(ctx),

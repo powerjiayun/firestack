@@ -657,7 +657,7 @@ func NewDcMult(pctx context.Context, px ipn.Proxies, ctl protect.Controller) *Dc
 		proxies:             px,
 		lastAddr:            "",
 		ctl:                 ctl,
-		dialer:              protect.MakeNsRDial(dnsx.DcProxy, ctl),
+		dialer:              protect.MakeNsRDial(dnsx.DcProxy, ctx, ctl),
 		est:                 core.NewP50Estimator(ctx),
 	}
 	err := dc.start()

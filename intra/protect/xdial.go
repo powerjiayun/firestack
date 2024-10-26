@@ -64,7 +64,7 @@ type RDialer interface {
 // It always discards bind address.
 type RDial struct {
 	owner string // owner tag
-
+	ctx   context.Context
 	// local dialer
 	dialer     *net.Dialer       // may be nil; used by exit, base, grounded
 	listen     *net.ListenConfig // may be nil; used by exit, base, grounded
@@ -89,8 +89,15 @@ func (d *RDial) Handle() uintptr {
 	return core.Loc(d)
 }
 
+func (d *RDial) context() context.Context {
+	if d.ctx != nil {
+		return d.ctx
+	}
+	return context.Background()
+}
+
 func (d *RDial) dial(network, addr string) (net.Conn, error) {
-	return d.dialer.Dial(network, addr)
+	return d.dialer.DialContext(d.context(), network, addr)
 }
 
 // Dial implements RDialer.

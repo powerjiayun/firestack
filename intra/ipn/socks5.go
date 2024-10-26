@@ -7,6 +7,7 @@
 package ipn
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/netip"
@@ -32,7 +33,8 @@ type socks5 struct {
 	id          string                 // unique identifier
 	opts        *settings.ProxyOptions // connect options
 	lastdial    time.Time              // last time this transport attempted a connection
-	status      int                    // status of this transport
+	status      *core.Volatile[int]    // status of this transport
+	done        context.CancelFunc     // cancel func
 }
 
 type socks5tcpconn struct {
@@ -86,17 +88,17 @@ func (c *socks5udpconn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	return 0, nil, errNoProxyConn
 }
 
-func NewSocks5Proxy(id string, ctl protect.Controller, po *settings.ProxyOptions) (*socks5, error) {
+func NewSocks5Proxy(id string, ctl protect.Controller, po *settings.ProxyOptions) (_ *socks5, err error) {
 	tx.Debug = settings.Debug
+	ctx, done := context.WithCancel(context.Background())
 
-	var err error
 	if po == nil {
 		log.W("proxy: err setting up socks5(%v): %v", po, err)
 		return nil, errMissingProxyOpt
 	}
 
 	// always with a network namespace aware dialer
-	dialer := protect.MakeNsRDial(id, ctl)
+	dialer := protect.MakeNsRDial(id, ctx, ctl)
 	// todo: support connecting from src
 	tx.DialTCP = func(n string, _, d string) (net.Conn, error) {
 		return dialer.Dial(n, d)
@@ -136,6 +138,7 @@ func NewSocks5Proxy(id string, ctl protect.Controller, po *settings.ProxyOptions
 		outbound: clients,
 		id:       id,
 		opts:     po,
+		done:     done,
 	}
 
 	log.D("proxy: socks5: created %s with clients(%d), opts(%s)",
@@ -162,7 +165,7 @@ func (h *socks5) DialBind(network, local, remote string) (c protect.Conn, err er
 
 // todo: bind to local
 func (h *socks5) dial(network, _, remote string) (c protect.Conn, err error) {
-	if h.status == END {
+	if h.status.Load() == END {
 		return nil, errProxyStopped
 	}
 
@@ -197,9 +200,9 @@ func (h *socks5) dial(network, _, remote string) (c protect.Conn, err error) {
 	if err == nil {
 		log.I("proxy: socks5: %s dial(%s) from %s => %s",
 			h.ID(), network, h.GetAddr(), remote)
-		h.status = TOK
+		h.status.Store(TOK)
 	} else {
-		h.status = TKO
+		h.status.Store(TKO)
 	}
 	return
 }
@@ -234,14 +237,16 @@ func (h *socks5) GetAddr() string {
 }
 
 func (h *socks5) Status() int {
-	if h.status != END && idling(h.lastdial) {
+	s := h.status.Load()
+	if s != END && idling(h.lastdial) {
 		return TZZ
 	}
-	return h.status
+	return s
 }
 
 func (h *socks5) Stop() error {
-	h.status = END
+	h.status.Store(END)
+	h.done()
 	log.I("proxy: socks5: stopped %s", h.id)
 	return nil
 }

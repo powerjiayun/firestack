@@ -33,23 +33,26 @@ const (
 )
 
 type pipws struct {
-	nofwd                             // no forwarding/listening
-	protoagnostic                     // since dial is proto aware
-	skiprefresh                       // no refresh
-	gw                                // dual stack gateway
-	url           string              // ws proxy url
-	hostname      string              // ws proxy hostname
-	port          int                 // ws proxy port
-	token         string              // hex, raw client token
-	toksig        string              // hex, authorizer (rdns) signed client token
-	rsasighash    string              // hex, authorizer sha256(unblinded signature)
-	echcfg        *tls.Config         // ech config
-	client        http.Client         // ws client
-	client3       *http.Client        // ws client for ech
-	outbound      *protect.RDial      // ws dialer
-	lastdial      time.Time           // last dial time
-	status        *core.Volatile[int] // proxy status: TOK, TKO, END
-	opts          *settings.ProxyOptions
+	nofwd                        // no forwarding/listening
+	protoagnostic                // since dial is proto aware
+	skiprefresh                  // no refresh
+	gw                           // dual stack gateway
+	url           string         // ws proxy url
+	hostname      string         // ws proxy hostname
+	port          int            // ws proxy port
+	token         string         // hex, raw client token
+	toksig        string         // hex, authorizer (rdns) signed client token
+	rsasighash    string         // hex, authorizer sha256(unblinded signature)
+	echcfg        *tls.Config    // ech config
+	client        http.Client    // ws client
+	client3       *http.Client   // ws client for ech
+	outbound      *protect.RDial // ws dialer
+	lastdial      time.Time      // last dial time
+
+	done context.CancelFunc // cancel func
+
+	status *core.Volatile[int] // proxy status: TOK, TKO, END
+	opts   *settings.ProxyOptions
 }
 
 var _ core.TCPConn = (*pipwsconn)(nil)
@@ -173,16 +176,18 @@ func NewPipWsProxy(ctl protect.Controller, po *settings.ProxyOptions) (*pipws, e
 	if (splitpath[1] != "ws" && splitpath[1] != "wss") || len(splitpath[3]) <= 0 {
 		return nil, errProxyConfig
 	}
-	dialer := protect.MakeNsRDial(RpnWs, ctl)
+
+	ctx, done := context.WithCancel(context.Background())
 	t := &pipws{
 		url:        parsedurl.String(),
 		hostname:   parsedurl.Hostname(),
 		port:       port,
-		outbound:   dialer,
+		outbound:   protect.MakeNsRDial(RpnWs, ctx, ctl),
 		token:      po.Auth.User,
 		toksig:     po.Auth.Password,
 		rsasighash: splitpath[2],
 		status:     core.NewVolatile(TUP),
+		done:       done,
 		opts:       po,
 	}
 
@@ -245,6 +250,7 @@ func (t *pipws) Reaches(hostportOrIPPortCsv string) bool {
 
 func (t *pipws) Stop() error {
 	t.status.Store(END)
+	t.done()
 	log.I("pipws: stopped")
 	return nil
 }

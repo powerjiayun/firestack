@@ -24,6 +24,7 @@
 package protect
 
 import (
+	"context"
 	"net"
 	"net/netip"
 	"syscall"
@@ -155,9 +156,10 @@ func MakeNsDialer(who string, c Controller) *net.Dialer {
 }
 
 // Creates a RDial that can bind to any active interface.
-func MakeNsRDial(who string, c Controller) *RDial {
+func MakeNsRDial(who string, ctx context.Context, c Controller) *RDial {
 	return &RDial{
 		owner:      who,
+		ctx:        ctx,
 		dialer:     MakeNsDialer(who, c),
 		listen:     MakeNsListener(who, c),
 		listenICMP: MakeNsICMPListener(who, c),
@@ -165,7 +167,7 @@ func MakeNsRDial(who string, c Controller) *RDial {
 }
 
 // Creates a RDial that can bind to any active interface, with additional control fns.
-func MakeNsRDialExt(who string, ctl Controller, ext []ControlFn) *RDial {
+func MakeNsRDialExt(who string, ctx context.Context, ctl Controller, ext []ControlFn) *RDial {
 	dialer := MakeNsDialer(who, ctl)
 	dialer.Control = func(network, address string, c syscall.RawConn) error {
 		for _, fn := range ext {
@@ -184,6 +186,7 @@ func MakeNsRDialExt(who string, ctl Controller, ext []ControlFn) *RDial {
 	icmplistener := MakeNsICMPListenerExt(who, ctl, ext)
 	return &RDial{
 		owner:      who,
+		ctx:        ctx,
 		dialer:     dialer,
 		listen:     listener,
 		listenICMP: icmplistener,

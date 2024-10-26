@@ -139,9 +139,9 @@ func newTransport(ctx context.Context, typ, id, rawurl, otargeturl string, addrs
 		done:      done,
 		id:        id,
 		typ:       typ,
-		dialer:    protect.MakeNsRDial(id, ctl), // ctl may be nil
-		proxies:   px,                           // may be nil
-		relay:     relay,                        // may be nil
+		dialer:    protect.MakeNsRDial(id, ctx, ctl), // ctl may be nil
+		proxies:   px,                                // may be nil
+		relay:     relay,                             // may be nil
 		status:    dnsx.Start,
 		pxclients: make(map[string]*proxytransport),
 		lastpurge: core.NewVolatile(time.Now()),

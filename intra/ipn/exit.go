@@ -7,6 +7,8 @@
 package ipn
 
 import (
+	"context"
+
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
@@ -22,15 +24,17 @@ type exit struct {
 	outbound *protect.RDial // outbound dialer
 	addr     string
 	status   *core.Volatile[int]
+	done     context.CancelFunc
 }
 
 // NewExitProxy returns a new exit proxy.
-func NewExitProxy(c protect.Controller) *exit {
-	d := protect.MakeNsRDial(Exit, c)
+func NewExitProxy(ctx context.Context, c protect.Controller) *exit {
+	ctx, done := context.WithCancel(ctx)
 	h := &exit{
 		addr:     "127.0.0.127:1337",
-		outbound: d,
+		outbound: protect.MakeNsRDial(Exit, ctx, c),
 		status:   core.NewVolatile(TUP),
+		done:     done,
 	}
 	return h
 }
@@ -129,6 +133,7 @@ func (h *exit) Status() int {
 
 func (h *exit) Stop() error {
 	h.status.Store(END)
+	h.done()
 	log.I("proxy: exit: stopped")
 	return nil
 }

@@ -7,6 +7,7 @@
 package rnet
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -38,6 +39,8 @@ type socks5 struct {
 	smu       sync.RWMutex // protects summaries
 	summaries map[*tx.UDPExchange]*ServerSummary
 
+	done context.CancelFunc
+
 	// mutable fields below
 
 	status *core.Volatile[int] // SOK, SKO, END
@@ -55,16 +58,6 @@ func newSocks5Server(id, x string, ctl protect.Controller, listener ServerListen
 	var usr string
 	var pwd string
 
-	rdial := protect.MakeNsRDial(id, ctl)
-	// tx.DialTCP and tx.DialUDP may already been set by ipn.sock5
-	tx.DialTCP = func(n string, _, d string) (net.Conn, error) {
-		return rdial.Dial(n, d)
-	}
-	// todo: support connecting from src
-	tx.DialUDP = func(n string, _, d string) (net.Conn, error) {
-		return rdial.Dial(n, d)
-	}
-
 	u, err := url.Parse(x)
 	if err != nil {
 		return nil, err
@@ -74,6 +67,18 @@ func newSocks5Server(id, x string, ctl protect.Controller, listener ServerListen
 		usr = u.User.Username()    // may be empty
 		pwd, _ = u.User.Password() // may be empty
 	}
+
+	ctx, done := context.WithCancel(context.Background())
+	dialer := protect.MakeNsRDial(id, ctx, ctl)
+	// tx.DialTCP and tx.DialUDP may already been set by ipn.sock5
+	tx.DialTCP = func(n string, _, d string) (net.Conn, error) {
+		return dialer.Dial(n, d)
+	}
+	// todo: support connecting from src
+	tx.DialUDP = func(n string, _, d string) (net.Conn, error) {
+		return dialer.Dial(n, d)
+	}
+
 	// unused in our case; usage: github.com/txthinking/brook/issues/988
 	remoteip := ""
 	hdl := &socks5handler{
@@ -88,11 +93,12 @@ func newSocks5Server(id, x string, ctl protect.Controller, listener ServerListen
 		Server:    server,
 		id:        id,
 		url:       host,
-		outbound:  rdial,
+		outbound:  dialer,
 		hdl:       hdl,
 		listener:  listener,
 		summaries: make(map[*tx.UDPExchange]*ServerSummary),
 		status:    core.NewVolatile(SOK),
+		done:      done,
 	}, nil
 }
 
@@ -150,6 +156,7 @@ func (h *socks5) Start() error {
 func (h *socks5) Stop() error {
 	err := h.Server.Shutdown()
 	h.status.Store(END)
+	h.done()
 	log.I("svcsocks5: %s stopped; err? %v", h.ID(), err)
 	return err
 }

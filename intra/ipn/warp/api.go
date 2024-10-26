@@ -36,7 +36,7 @@ type Client struct {
 }
 
 func NewWarpClient(ctx context.Context, ctl protect.Controller) *Client {
-	d := protect.MakeNsRDial("warpclient", ctl)
+	d := protect.MakeNsRDial("warpclient", ctx, ctl)
 	w := &Client{
 		d: d,
 	}

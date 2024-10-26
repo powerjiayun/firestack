@@ -49,6 +49,8 @@ var _ dnsx.Transport = (*dot)(nil)
 
 // NewTLSTransport returns a DNS over TLS transport, ready for use.
 func NewTLSTransport(ctx context.Context, id, rawurl string, addrs []string, px ipn.Proxies, ctl protect.Controller) (t *dot, err error) {
+	ctx, done := context.WithCancel(ctx)
+
 	tlscfg := &tls.Config{
 		MinVersion:             tls.VersionTLS12,
 		SessionTicketsDisabled: false,
@@ -73,7 +75,7 @@ func NewTLSTransport(ctx context.Context, id, rawurl string, addrs []string, px 
 	if px != nil {
 		relay, _ = px.ProxyFor(id)
 	}
-	rd := protect.MakeNsRDial(id, ctl)
+	rd := protect.MakeNsRDial(id, ctx, ctl)
 	hostname := parsedurl.Hostname()
 	if len(hostname) <= 0 {
 		hostname = rawurl
@@ -83,7 +85,6 @@ func NewTLSTransport(ctx context.Context, id, rawurl string, addrs []string, px 
 	// add sni to tls config
 	tlscfg.ServerName = hostname
 	tlscfg.ClientSessionCache = core.TlsSessionCache()
-	ctx, done := context.WithCancel(ctx)
 	t = &dot{
 		ctx:           ctx,
 		done:          done,

@@ -7,6 +7,8 @@
 package ipn
 
 import (
+	"context"
+
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
@@ -24,15 +26,17 @@ type base struct {
 	outbound      *protect.RDial // outbound dialer
 	addr          string
 	status        *core.Volatile[int]
+	done          context.CancelFunc
 }
 
 // Base returns a base proxy.
-func NewBaseProxy(c protect.Controller) *base {
-	d := protect.MakeNsRDial(Base, c)
+func NewBaseProxy(ctx context.Context, c protect.Controller) *base {
+	ctx, done := context.WithCancel(ctx)
 	h := &base{
 		addr:     "127.8.4.5:3690",
-		outbound: d,
+		outbound: protect.MakeNsRDial(Base, ctx, c),
 		status:   core.NewVolatile(TUP),
+		done:     done,
 	}
 	return h
 }
@@ -135,6 +139,7 @@ func (h *base) Status() int {
 
 func (h *base) Stop() error {
 	h.status.Store(END)
+	h.done()
 	log.I("proxy: base: stopped")
 	return nil
 }

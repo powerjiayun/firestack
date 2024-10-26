@@ -7,6 +7,7 @@
 package ipn
 
 import (
+	"context"
 	"math/rand"
 	"net"
 	"net/netip"
@@ -42,15 +43,17 @@ type exit64 struct {
 	outbound *protect.RDial // outbound dialer
 	addr     string
 	status   *core.Volatile[int]
+	done     context.CancelFunc
 }
 
 // NewExit64Proxy returns a new exit64 proxy.
-func NewExit64Proxy(c protect.Controller) *exit64 {
-	d := protect.MakeNsRDial(Exit, c)
+func NewExit64Proxy(ctx context.Context, c protect.Controller) *exit64 {
+	ctx, done := context.WithCancel(ctx)
 	h := &exit64{
 		addr:     "127.64.64.127:6464",
-		outbound: d,
+		outbound: protect.MakeNsRDial(Exit, ctx, c),
 		status:   core.NewVolatile(TUP),
+		done:     done,
 	}
 	return h
 }
@@ -200,6 +203,7 @@ func (h *exit64) Status() int {
 
 func (h *exit64) Stop() error {
 	h.status.Store(END)
+	h.done()
 	log.I("proxy: exit64: stopped")
 	return nil
 }
