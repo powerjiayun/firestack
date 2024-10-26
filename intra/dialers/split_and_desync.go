@@ -318,21 +318,22 @@ func dialWithSplitAndDesync(d *protect.RDial, laddr, raddr *net.TCPAddr) (*overw
 	return conn, err
 }
 
-// Close implements DuplexConn.
+// Close implements core.DuplexConn.
 func (s *overwriteSplitter) Close() error { core.CloseTCP(s.conn); return nil }
 
-// CloseRead implements DuplexConn.
+// CloseRead implements core.DuplexConn.
 func (s *overwriteSplitter) CloseRead() error { core.CloseTCPRead(s.conn); return nil }
 
-// CloseWrite implements DuplexConn.
+// CloseWrite implements core.DuplexConn.
 func (s *overwriteSplitter) CloseWrite() error { core.CloseTCPWrite(s.conn); return nil }
 
-// LocalAddr implements DuplexConn.
+// LocalAddr implements core.DuplexConn.
 func (s *overwriteSplitter) LocalAddr() net.Addr { return laddr(s.conn) }
 
-// RemoteAddr implements DuplexConn.
+// RemoteAddr implements core.DuplexConn.
 func (s *overwriteSplitter) RemoteAddr() net.Addr { return raddr(s.conn) }
 
+// SetDeadline implements core.DuplexConn.
 func (s *overwriteSplitter) SetDeadline(t time.Time) error {
 	if c := s.conn; c != nil {
 		return c.SetDeadline(t)
@@ -340,7 +341,7 @@ func (s *overwriteSplitter) SetDeadline(t time.Time) error {
 	return nil // no-op
 }
 
-// SyscallConn implements syscall.Conn.
+// SyscallConn implements core.PoolableConn.
 func (s *overwriteSplitter) SyscallConn() (syscall.RawConn, error) {
 	if c := s.conn; c != nil {
 		return c.SyscallConn()
@@ -348,7 +349,7 @@ func (s *overwriteSplitter) SyscallConn() (syscall.RawConn, error) {
 	return nil, syscall.EINVAL
 }
 
-// SetReadDeadline implements DuplexConn.
+// SetReadDeadline implements core.DuplexConn.
 func (s *overwriteSplitter) SetReadDeadline(t time.Time) error {
 	if c := s.conn; c != nil {
 		return c.SetReadDeadline(t)
@@ -356,7 +357,7 @@ func (s *overwriteSplitter) SetReadDeadline(t time.Time) error {
 	return nil // no-op
 }
 
-// SetWriteDeadline implements DuplexConn.
+// SetWriteDeadline implements core.DuplexConn.
 func (s *overwriteSplitter) SetWriteDeadline(t time.Time) error {
 	if c := s.conn; c != nil {
 		return c.SetWriteDeadline(t)
@@ -364,10 +365,10 @@ func (s *overwriteSplitter) SetWriteDeadline(t time.Time) error {
 	return nil // no-op
 }
 
-// Read implements DuplexConn.
+// Read implements core.DuplexConn.
 func (s *overwriteSplitter) Read(b []byte) (int, error) { return s.conn.Read(b) }
 
-// Write implements DuplexConn.
+// Write implements core.DuplexConn.
 // ref: github.com/hufrea/byedpi/blob/82e5229df00/desync.c#L69-L123
 func (s *overwriteSplitter) Write(b []byte) (n int, err error) {
 	conn := s.conn
@@ -455,7 +456,7 @@ func (s *overwriteSplitter) Write(b []byte) (n int, err error) {
 	// restore the first-half of the payload so that it gets picked up on retranmission.
 	copy(firstSegment, b[:len(s.payload)])
 
-	// restore to default TTL
+	// restore default TTL
 	if s.ip6 {
 		err = unix.SetsockoptInt(sockFD, unix.IPPROTO_IPV6, unix.IPV6_UNICAST_HOPS, default_ttl)
 	} else {
