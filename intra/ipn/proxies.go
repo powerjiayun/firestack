@@ -193,6 +193,7 @@ func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener)
 
 	pxr.warpc = warp.NewWarpClient(pctx, c)
 	pxr.add(pxr.exit)     // fixed
+	pxr.add(pxr.exit64)   // fixed
 	pxr.add(pxr.base)     // fixed
 	pxr.add(pxr.grounded) // fixed
 	pxr.add(pxr.auto)
@@ -245,6 +246,12 @@ func (px *proxifier) add(p Proxy) (ok bool) {
 				px.p[id] = p
 				ok = true
 			}
+		case Rpn64:
+			if x, typeok := p.(*exit64); typeok {
+				px.exit64 = x
+				px.p[id] = p
+				ok = true
+			}
 		case Auto:
 			if x, typeok := p.(*auto); typeok {
 				px.auto = x
@@ -287,9 +294,12 @@ func (px *proxifier) ok(p Proxy) error {
 		return nil
 	}
 
+	if p.Status() == END {
+		return errProxyStopped
+	} // TODO: err on TNT, TKO?
+
 	if r := p.Router(); r != nil {
-		stat := r.Stat()
-		if stat != nil {
+		if stat := r.Stat(); stat != nil {
 			now := now()
 			lastOK := stat.LastOK
 			lastOKNeverOK := lastOK <= 0
@@ -303,9 +313,6 @@ func (px *proxifier) ok(p Proxy) error {
 			}
 		} // else: fallthrough
 	} // else: no router; nothing to do
-	if p.Status() == END {
-		return errProxyStopped
-	} // TODO: err on TNT, TKO?
 
 	return nil // ok
 }
@@ -459,7 +466,9 @@ func (px *proxifier) ProxyFor(id string) (Proxy, error) {
 			return px.grounded, nil
 		} else if id == Auto {
 			return px.auto, nil
-		} // Ingress & Exit64 do not have a fast path
+		} else if id == Rpn64 {
+			return px.exit64, nil
+		} // Ingress do not have a fast path
 	}
 
 	// go.dev/play/p/xCug1W3OcMH
