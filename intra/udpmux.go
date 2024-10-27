@@ -538,7 +538,7 @@ func (e *muxTable) associate(cid, pid, uid string, src, dst netip.AddrPort, mk a
 			return nil, err // return
 		}
 
-		mxr := newMuxer(cid, pid, uid, pc, v, func() {
+		mxr = newMuxer(cid, pid, uid, pc, v, func() {
 			e.dissociate(cid, pid, src)
 		})
 		pxm[src] = mxr
