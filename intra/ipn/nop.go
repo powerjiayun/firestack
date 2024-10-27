@@ -32,7 +32,12 @@ func (w *gw) IP6() bool { return !w.nov6 }
 func (w *gw) MTU() (int, error) { return NOMTU, errNoMtu }
 
 // Stat implements Router.
-func (w *gw) Stat() *x.RouterStats { return &w.stats }
+func (w *gw) Stat() *x.RouterStats {
+	if !w.nov4 || !w.nov6 {
+		w.stats.LastOK = now() // always OK
+	}
+	return &w.stats
+}
 
 // Contains implements Router.
 func (w *gw) Contains(prefix string) bool {
