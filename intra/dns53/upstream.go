@@ -44,6 +44,7 @@ type transport struct {
 	addrport string // hostname, ip:port, protect.UidSelf:53, protect.System:53
 	client   *dns.Client
 	dialer   *protect.RDial
+	pool     *core.MultConnPool[uintptr]
 	proxies  ipn.Proxies // should never be nil
 	relay    ipn.Proxy   // may be nil
 	est      core.P2QuantileEstimator
@@ -91,6 +92,7 @@ func newTransport(pctx context.Context, id string, do *settings.DNSOptions, px i
 		status:   core.NewVolatile(dnsx.Start),
 		lastaddr: core.NewZeroVolatile[string](),
 		dialer:   protect.MakeNsRDial(id, ctx, ctl),
+		pool:     core.NewMultConnPool[uintptr](ctx),
 		proxies:  px,    // never nil; see above
 		relay:    relay, // may be nil
 		est:      core.NewP50Estimator(ctx),
@@ -107,7 +109,7 @@ func newTransport(pctx context.Context, id string, do *settings.DNSOptions, px i
 		// Dialer:  d,
 		// TODO: set it to MTU? or no more than 512 bytes?
 		// ref: github.com/miekg/dns/blob/b3dfea071/server.go#L207
-		// UDPSize:        dns.DefaultMsgSize,
+		// UDPSize: dns.DefaultMsgSize,
 	}
 	log.I("dns53: (%s) setup: %s; pre-ips? %t; relay? %t", id, tx.addrport, hasips, relay != nil)
 	return tx, nil
@@ -123,43 +125,108 @@ func NewTransportFrom(ctx context.Context, id string, ipp netip.AddrPort, px ipn
 	return newTransport(ctx, id, do, px, ctl)
 }
 
-func (t *transport) pxdial(network, pid string) (conn *dns.Conn, err error) {
+func (t *transport) pxdial(network, pid string) (*dns.Conn, uintptr, error) {
 	var px ipn.Proxy
 	if t.relay != nil { // relay takes precedence
 		px = t.relay
 	} else if t.proxies != nil { // use proxy, if specified
+		var err error
 		if px, err = t.proxies.ProxyFor(pid); err != nil {
-			return
+			return nil, core.Nobody, err
 		}
 	}
 	if px == nil {
-		return nil, dnsx.ErrNoProxyProvider
+		return nil, core.Nobody, dnsx.ErrNoProxyProvider
 	}
+
+	who := px.Handle()
+	if c := t.fromPool(who); c != nil {
+		return c, who, nil
+	}
+
 	log.V("dns53: pxdial: (%s) using %s relay/proxy %s at %s",
 		t.id, network, px.ID(), px.GetAddr())
+
 	pxconn, err := px.Dialer().Dial(network, t.addrport)
 	if err != nil {
-		return
+		clos(pxconn)
+		return nil, core.Nobody, err
 	} else if pxconn == nil {
 		log.E("dns53: pxdial: (%s) no %s conn for relay/proxy %s at %s",
 			t.id, network, px.ID(), px.GetAddr())
 		err = errNoNet
-		return
+		return nil, core.Nobody, err
 	}
-	conn = &dns.Conn{Conn: pxconn}
-	return
+	return &dns.Conn{Conn: pxconn}, who, nil
 }
 
-func (t *transport) dial(network string) (*dns.Conn, error) {
+func (t *transport) dial(network string) (*dns.Conn, uintptr, error) {
+	who := t.dialer.Handle()
+	if c := t.fromPool(who); c != nil {
+		return c, who, nil
+	}
 	// protect.dialers resolves t.addrport, if necessary
 	c, err := dialers.Dial(t.dialer, network, t.addrport)
 	if err != nil {
-		return nil, err
+		return nil, core.Nobody, err
 	} else if c == nil || core.IsNil(c) {
-		return nil, errNoNet
+		return nil, core.Nobody, errNoNet
 	} else {
-		return &dns.Conn{Conn: c}, nil
+		return &dns.Conn{Conn: c}, who, nil
 	}
+}
+
+// toPool takes ownership of c.
+func (t *transport) toPool(id uintptr, c *dns.Conn) {
+	if !usepool || id == core.Nobody {
+		clos(c)
+		return
+	}
+	ok := t.pool.Put(id, c)
+	logwif(!ok)("dns53: pool: (%s) put for %v; ok? %t", t.id, id, ok)
+}
+
+// fromPool returns a conn from the pool, if available.
+func (t *transport) fromPool(id uintptr) (c *dns.Conn) {
+	if !usepool || id == core.Nobody {
+		return
+	}
+
+	pooled := t.pool.Get(id)
+	if pooled == nil || core.IsNil(pooled) {
+		return
+	}
+	var ok bool
+	if c, ok = pooled.(*dns.Conn); !ok { // unlikely
+		return &dns.Conn{Conn: pooled}
+	}
+	log.V("dns53: pool: (%s) got conn from %v", t.id, id)
+	return
+}
+
+func (t *transport) connect(network, pid string) (conn *dns.Conn, who uintptr, err error) {
+	useudp := network == dnsx.NetTypeUDP
+	userelay := t.relay != nil
+	useproxy := len(pid) != 0 // pid == dnsx.NetNoProxy => ipn.Base
+
+	// if udp is unreachable, try tcp: github.com/celzero/rethink-app/issues/839
+	// note that some proxies do not support udp (eg pipws, piph2)
+	if userelay || useproxy {
+		conn, who, err = t.pxdial(network, pid)
+		if err != nil && useudp {
+			clos(conn)
+			network = dnsx.NetTypeTCP
+			conn, who, err = t.pxdial(network, pid)
+		}
+	} else {
+		conn, who, err = t.dial(network)
+		if err != nil && useudp {
+			clos(conn)
+			network = dnsx.NetTypeTCP
+			conn, who, err = t.dial(network)
+		}
+	}
+	return
 }
 
 // ref: github.com/celzero/midway/blob/77ede02c/midway/server.go#L179
@@ -169,34 +236,14 @@ func (t *transport) send(network, pid string, q *dns.Msg) (ans *dns.Msg, elapsed
 		qerr = dnsx.NewBadQueryError(errQueryParse)
 		return
 	}
-
-	var conn *dns.Conn
-
 	qname := xdns.QName(q)
 	useudp := network == dnsx.NetTypeUDP
 	userelay := t.relay != nil
 	useproxy := len(pid) != 0 // pid == dnsx.NetNoProxy => ipn.Base
 
-	// if udp is unreachable, try tcp: github.com/celzero/rethink-app/issues/839
-	// note that some proxies do not support udp (eg pipws, piph2)
-	if userelay || useproxy {
-		conn, err = t.pxdial(network, pid)
-		if err != nil && useudp {
-			log.E("dns53: send: udp %s pxdial(px? %t / relay? %t) for %s failed %v",
-				t.id, useproxy, userelay, qname, err)
-			network = dnsx.NetTypeTCP
-			conn, err = t.pxdial(network, pid)
-		}
-	} else {
-		conn, err = t.dial(network)
-		if err != nil && useudp {
-			log.E("dns53: send: udp %s dial for %s failed %v", t.id, qname, err)
-			network = dnsx.NetTypeTCP
-			conn, err = t.dial(network)
-		}
-	}
+	conn, who, err := t.connect(network, pid)
 
-	log.V("dns53: send: (%s / %s) to %s for %s using udp? %t / px? %t / relay? %t; err? %v",
+	logev(err)("dns53: send: (%s / %s) to %s for %s using udp? %t / px? %t / relay? %t; err? %v",
 		network, t.id, t.addrport, qname, useudp, useproxy, userelay, err)
 
 	if err != nil {
@@ -206,16 +253,18 @@ func (t *transport) send(network, pid string, q *dns.Msg) (ans *dns.Msg, elapsed
 
 	lastaddr := remoteAddrIfAny(conn) // may return empty string
 	ans, elapsed, err = t.client.ExchangeWithConnContext(t.ctx, q, conn)
-	clos(conn) // TODO: conn pooling w/ ExchangeWithConn
 
 	if err != nil {
+		clos(conn)
 		ok := dialers.Disconfirm2(t.addrport, lastaddr)
 		log.V("dns53: sendRequest: (%s) for %s; err: %v; disconfirm? %t %s => %s",
 			t.id, qname, err, ok, t.addrport, lastaddr)
 		qerr = dnsx.NewSendFailedQueryError(err)
 	} else if ans == nil {
-		qerr = dnsx.NewBadResponseQueryError(err)
+		t.toPool(who, conn) // or close
+		qerr = dnsx.NewBadResponseQueryError(errNoAns)
 	} else {
+		t.toPool(who, conn) // or close
 		dialers.Confirm2(t.addrport, lastaddr)
 	}
 
@@ -306,4 +355,11 @@ func remoteAddrIfAny(conn *dns.Conn) string {
 	} else {
 		return addr.String()
 	}
+}
+
+func logev(err error) log.LogFn {
+	if err != nil {
+		return log.E
+	}
+	return log.V
 }
