@@ -106,9 +106,8 @@ func (d *RDial) Dial(network, addr string) (net.Conn, error) {
 	return d.dial(network, addr)
 }
 
-func (d *RDial) DialContext(_ context.Context, network, addr string) (net.Conn, error) {
-	// TODO: use context to cancel dialing
-	return d.dial(network, addr)
+func (d *RDial) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return d.dialer.DialContext(ctx, network, addr)
 }
 
 func (d *RDial) cloneDialer() *net.Dialer {
