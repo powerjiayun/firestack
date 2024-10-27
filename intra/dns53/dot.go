@@ -270,6 +270,9 @@ func (t *dot) sendRequest(pid string, q *dns.Msg) (ans *dns.Msg, elapsed time.Du
 		log.V("dot: sendRequest: (%s) sz: %d, pad: %d, err: %v; disconfirm? %t %s => %s",
 			t.id, xdns.Size(q), xdns.EDNS0PadLen(q), err, ok, t.host, raddr)
 		qerr = dnsx.NewSendFailedQueryError(err)
+	} else if ans == nil {
+		t.toPool(who, conn) // or close
+		qerr = dnsx.NewBadResponseQueryError(errNoAns)
 	} else {
 		t.toPool(who, conn) // or close
 		dialers.Confirm2(t.host, raddr)
