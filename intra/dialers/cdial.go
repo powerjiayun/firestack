@@ -20,6 +20,8 @@ import (
 
 const dialRetryTimeout = 1 * time.Minute
 
+var errRetryTimeout = errors.New("dialers: retry timeout")
+
 func maybeFilter(ips []netip.Addr, alwaysExclude netip.Addr) ([]netip.Addr, bool) {
 	failingopen := true
 	use4 := Use4()
@@ -132,6 +134,7 @@ func commondial2[D rdials, C rconns](d D, network, laddr, raddr string, connect 
 	for _, ip := range allips {
 		end := time.Since(start)
 		if end > dialRetryTimeout {
+			errs = errors.Join(errs, errRetryTimeout)
 			log.D("rdial: commondial: timeout %s for %s", end, raddr)
 			break
 		}

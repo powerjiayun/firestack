@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/log"
@@ -40,8 +41,13 @@ func ProxyDial(d proxy.Dialer, network, addr string) (net.Conn, error) {
 
 // ProxyDials tries to connect to addr using each dialer in dd
 func ProxyDials(dd []proxy.Dialer, network, addr string) (c net.Conn, err error) {
+	start := time.Now()
 	tot := len(dd)
 	for i, d := range dd {
+		if time.Since(start) > dialRetryTimeout {
+			err = errors.Join(err, errRetryTimeout)
+			break
+		}
 		c, err = ProxyDial(d, network, addr)
 		if c == nil && err == nil {
 			err = errors.Join(err, errNoConn)
