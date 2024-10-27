@@ -38,6 +38,7 @@ var errQueryParse = errors.New("dns53: err parse query")
 
 // TODO: Keep a context here so that queries can be canceled.
 type transport struct {
+	ctx      context.Context
 	done     context.CancelFunc
 	id       string
 	addrport string // hostname, ip:port, protect.UidSelf:53, protect.System:53
@@ -74,15 +75,15 @@ func NewTransport(ctx context.Context, id, ip, port string, px ipn.Proxies, ctl 
 }
 
 func newTransport(pctx context.Context, id string, do *settings.DNSOptions, px ipn.Proxies, ctl protect.Controller) (*transport, error) {
-	ctx, done := context.WithCancel(pctx)
-
 	// cannot be nil, see: ipn.Exit which the only proxy guaranteed to be connected to the internet;
 	// ex: ipn.Base routed back within the tunnel (rethink's traffic routed back into rethink).
 	if px == nil {
 		return nil, dnsx.ErrNoProxyProvider
 	}
+	ctx, done := context.WithCancel(pctx)
 	relay, _ := px.ProxyFor(id)
 	tx := &transport{
+		ctx:      ctx,
 		done:     done,
 		id:       id,
 		addrport: do.AddrPort(), // may be hostname:port or ip:port
@@ -198,7 +199,7 @@ func (t *transport) send(network, pid string, q *dns.Msg) (ans *dns.Msg, elapsed
 	} // else: send query
 
 	lastaddr := remoteAddrIfAny(conn) // may return empty string
-	ans, elapsed, err = t.client.ExchangeWithConn(q, conn)
+	ans, elapsed, err = t.client.ExchangeWithConnContext(t.ctx, q, conn)
 	clos(conn) // TODO: conn pooling w/ ExchangeWithConn
 
 	if err != nil {
