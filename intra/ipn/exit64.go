@@ -50,7 +50,8 @@ type exit64 struct {
 func NewExit64Proxy(ctx context.Context, c protect.Controller) *exit64 {
 	ctx, done := context.WithCancel(ctx)
 	h := &exit64{
-		addr:     "127.64.64.127:6464",
+		addr: "127.64.64.127:6464",
+		// "Exit" as "id" to have all its sockets "protected"
 		outbound: protect.MakeNsRDial(Exit, ctx, c),
 		status:   core.NewVolatile(TUP),
 		done:     done,
