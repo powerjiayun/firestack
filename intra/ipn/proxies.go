@@ -9,7 +9,6 @@ package ipn
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/netip"
 	"os"
 	"strings"
@@ -285,39 +284,6 @@ func (px *proxifier) RemoveProxy(id string) bool {
 	return false
 }
 
-func (px *proxifier) ok(p Proxy) error {
-	if p == nil {
-		return errProxyNotFound
-	}
-
-	pid := p.ID()
-	if local(pid) { // fast path for local proxies which are always ok
-		return nil
-	}
-
-	if p.Status() == END {
-		return errProxyStopped
-	} // TODO: err on TNT, TKO?
-
-	if r := p.Router(); r != nil {
-		if stat := r.Stat(); stat != nil {
-			now := now()
-			lastOK := stat.LastOK
-			lastOKNeverOK := lastOK <= 0
-			lastOKBeyondThres := now-lastOK > lastOKThreshold.Milliseconds()
-			if lastOKNeverOK || lastOKBeyondThres {
-				p.Ping()
-				return fmt.Errorf("proxy: %s not ok; lastOK: zz? %t / thres? %t",
-					pid, lastOKNeverOK, lastOKBeyondThres)
-			} else if now-lastOK > tzzTimeout.Milliseconds() {
-				p.Ping()
-			}
-		} // else: fallthrough
-	} // else: no router; nothing to do
-
-	return nil // ok
-}
-
 // ProxyTo implements Proxies.
 // May return both a Proxy and an error, in which case, the error
 // denotes that while the Proxy is not healthy, it is still registered.
@@ -422,13 +388,13 @@ func (px *proxifier) pinID(uid string, ipp netip.AddrPort, id string) (Proxy, er
 }
 
 func (px *proxifier) pin(uid string, ipp netip.AddrPort, p Proxy) error {
-	err := px.ok(p) // ok is called to ensure p is ready-to-go
+	err := healthy(p) // called to ensure p is ready-to-go
 	if err == nil {
 		px.uidPins.Put(uid, ipp, p.ID())
 		px.ipPins.Put(ipp, p.ID())
 	}
-	logev(err)("proxy: pin: router? %t, ok? %t; %s from %s; err? %v",
-		p.Router() != nil, err == nil, ipp, p.ID(), err)
+	logev(err)("proxy: pin: ok? %t; %s from %s; err? %v",
+		err == nil, ipp, p.ID(), err)
 	return err
 }
 

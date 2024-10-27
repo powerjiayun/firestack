@@ -86,9 +86,9 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 					return nil, errNotPinned
 				}
 				// ip pinned to this proxy
-				dialProxy(exit, network, local, remote)
+				h.dialIfHealthy(exit, network, local, remote)
 			}
-			return h.dialAfterTest(exit, network, local, remote)
+			return h.dialIfReachable(exit, network, local, remote)
 		}, func(ctx context.Context) (protect.Conn, error) {
 			const myidx = 1
 			if warp == nil {
@@ -99,7 +99,7 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 					return nil, errNotPinned
 				}
 				// ip pinned to this proxy
-				return dialProxy(warp, network, local, remote)
+				return h.dialIfHealthy(warp, network, local, remote)
 			}
 
 			select {
@@ -107,7 +107,7 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 				return nil, ctx.Err()
 			case <-time.After(shortdelay):
 			}
-			return dialProxy(warp, network, local, remote)
+			return h.dialIfHealthy(warp, network, local, remote)
 		}, func(ctx context.Context) (protect.Conn, error) {
 			const myidx = 2
 			if exit64 == nil {
@@ -118,7 +118,7 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 					return nil, errNotPinned
 				}
 				// ip pinned to this proxy
-				return dialProxy(exit64, network, local, remote)
+				return h.dialIfHealthy(exit64, network, local, remote)
 			}
 
 			select {
@@ -249,21 +249,31 @@ func (h *auto) Stop() error {
 	return nil
 }
 
-func maybeKeepAlive(c net.Conn) {
-	if settings.GetDialerOpts().LowerKeepAlive {
-		// adjust TCP keepalive config if c is a TCPConn
-		core.SetKeepAliveConfigSockOpt(c)
-	}
-}
-
-func (h *auto) dialAfterTest(p Proxy, network, local, remote string) (net.Conn, error) {
+func (h *auto) dialIfReachable(p Proxy, network, local, remote string) (net.Conn, error) {
 	ipp, _ := netip.ParseAddrPort(remote)
 	if reachable, err := h.ba.DoIt(baID(p, remote), icmpReachesWork(p, ipp)); err != nil {
 		return nil, err
 	} else if !reachable {
 		return nil, errUnreachable
 	}
-	return dialProxy(p, network, local, remote)
+	return h.dialIfHealthy(p, network, local, remote)
+}
+
+func (*auto) dialIfHealthy(p Proxy, network, local, remote string) (net.Conn, error) {
+	if err := healthy(p); err != nil {
+		return nil, err
+	}
+	if len(local) > 0 {
+		return p.Dialer().DialBind(network, local, remote)
+	}
+	return p.Dialer().Dial(network, remote)
+}
+
+func maybeKeepAlive(c net.Conn) {
+	if settings.GetDialerOpts().LowerKeepAlive {
+		// adjust TCP keepalive config if c is a TCPConn
+		core.SetKeepAliveConfigSockOpt(c)
+	}
 }
 
 func baID(p Proxy, ipp string) string {

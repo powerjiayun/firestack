@@ -192,13 +192,6 @@ func Reaches(p Proxy, hostportOrIPPortCsv string) bool {
 	return ok
 }
 
-func dialProxy(p Proxy, network, local, remote string) (net.Conn, error) {
-	if len(local) > 0 {
-		return p.Dialer().DialBind(network, local, remote)
-	}
-	return p.Dialer().Dial(network, remote)
-}
-
 func AnyAddrForUDP(ipp netip.AddrPort) (proto, anyaddr string) {
 	anyaddr = "0.0.0.0:0"
 	proto = "udp4"
@@ -274,4 +267,35 @@ func icmpReaches(p Proxy, ipp netip.AddrPort) (bool, error) {
 		err = nil
 	}
 	return ok, err
+}
+
+func healthy(p Proxy) error {
+	if p == nil {
+		return errProxyNotFound
+	}
+
+	pid := p.ID()
+	if local(pid) { // fast path for local proxies which are always ok
+		return nil
+	}
+
+	if p.Status() == END {
+		return errProxyStopped
+	} // TODO: err on TNT, TKO?
+
+	if stat := p.Router().Stat(); stat != nil {
+		now := now()
+		lastOK := stat.LastOK
+		lastOKNeverOK := lastOK <= 0
+		lastOKBeyondThres := now-lastOK > lastOKThreshold.Milliseconds()
+		if lastOKNeverOK || lastOKBeyondThres {
+			p.Ping()
+			return fmt.Errorf("proxy: %s not ok; lastOK: zz? %t / thres? %t",
+				pid, lastOKNeverOK, lastOKBeyondThres)
+		} else if now-lastOK > tzzTimeout.Milliseconds() {
+			p.Ping()
+		}
+	} // else: no stats; nothing to do
+
+	return nil // ok
 }
