@@ -12,15 +12,17 @@ import (
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/protect"
 )
 
 // exit is a proxy that always dials out to the internet.
 type exit struct {
-	protoagnostic
-	skiprefresh
-	gw
+	nop.NoDNS
+	nop.ProtoAgnostic
+	nop.SkipRefresh
+	nop.GW
 	outbound *protect.RDial // outbound dialer
 	addr     string
 	status   *core.Volatile[int]
@@ -99,11 +101,6 @@ func (h *exit) Probe(network, local string) (protect.PacketConn, error) {
 
 func (h *exit) Dialer() protect.RDialer {
 	return h
-}
-
-// todo: return system DNS
-func (h *exit) DNS() string {
-	return nodns
 }
 
 func (h *exit) ID() string {

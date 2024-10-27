@@ -38,6 +38,7 @@ const (
 	RpnWs   = x.RpnWs
 	Rpn64   = x.Rpn64
 	RpnH2   = x.RpnH2
+	RpnSE   = x.RpnSE
 
 	SOCKS5   = x.SOCKS5
 	HTTP1    = x.HTTP1
@@ -55,37 +56,32 @@ const (
 	TKO = x.TKO
 	END = x.END
 
-	// DNS addrs, urls, or stamps
-	nodns = "" // no DNS
-
 	NOMTU  = 0
 	MAXMTU = 65535
 )
 
 var (
-	errProxyScheme          = errors.New("proxy: unsupported scheme")
-	errUnexpectedProxy      = errors.New("proxy: unexpected type")
-	errAddProxy             = errors.New("proxy: add failed")
-	errProxyNotFound        = errors.New("proxy: not found")
-	errGetProxyTimeout      = errors.New("proxy: get timeout")
-	errProxyDown            = errors.New("proxy: all down")
-	errMissingProxyOpt      = errors.New("proxy: opts nil")
-	errNoProxyConn          = errors.New("proxy: not a tcp/udp conn")
-	errNotUDPConn           = errors.New("proxy: not a udp conn")
-	errAnnounceNotSupported = errors.New("proxy: announce not supported")
-	errProbeNotSupported    = errors.New("proxy: probe not supported")
-	errProxyStopped         = errors.New("proxy: stopped")
-	errProxyConfig          = errors.New("proxy: invalid config")
-	errNoProxyResponse      = errors.New("proxy: no response from upstream")
-	errNoSig                = errors.New("proxy: auth missing sig")
-	errNoMtu                = errors.New("proxy: missing mtu")
-	errNoOpts               = errors.New("proxy: no opts")
-	errMissingRev           = errors.New("proxy: missing reverse proxy")
-	errNoAuto464XLAT        = errors.New("auto: no 464xlat")
-	errNotPinned            = errors.New("auto: another proxy pinned")
-	errInvalidAddr          = errors.New("proxy: invaild ip:port")
-	errUnreachable          = errors.New("proxy: destination unreachable")
-	errMissingProxyID       = errors.New("proxy: missing proxy id")
+	errProxyScheme     = errors.New("proxy: unsupported scheme")
+	errUnexpectedProxy = errors.New("proxy: unexpected type")
+	errAddProxy        = errors.New("proxy: add failed")
+	errProxyNotFound   = errors.New("proxy: not found")
+	errGetProxyTimeout = errors.New("proxy: get timeout")
+	errProxyDown       = errors.New("proxy: all down")
+	errMissingProxyOpt = errors.New("proxy: opts nil")
+	errNoProxyConn     = errors.New("proxy: not a tcp/udp conn")
+	errNotUDPConn      = errors.New("proxy: not a udp conn")
+	errProxyStopped    = errors.New("proxy: stopped")
+	errProxyConfig     = errors.New("proxy: invalid config")
+	errNoProxyResponse = errors.New("proxy: no response from upstream")
+	errNoSig           = errors.New("proxy: auth missing sig")
+	errNoMtu           = errors.New("proxy: missing mtu")
+	errNoOpts          = errors.New("proxy: no opts")
+	errMissingRev      = errors.New("proxy: missing reverse proxy")
+	errNoAuto464XLAT   = errors.New("auto: no 464xlat")
+	errNotPinned       = errors.New("auto: another proxy pinned")
+	errInvalidAddr     = errors.New("proxy: invaild ip:port")
+	errUnreachable     = errors.New("proxy: destination unreachable")
+	errMissingProxyID  = errors.New("proxy: missing proxy id")
 )
 
 const (
@@ -123,7 +119,7 @@ type Proxy interface {
 	// guaranteed to implement Dial.
 	Dialer() protect.RDialer
 	// onProtoChange returns true if the proxy must be re-added with cfg on proto changes.
-	onProtoChange() (cfg string, readd bool)
+	OnProtoChange() (cfg string, readd bool)
 }
 
 type Proxies interface {
@@ -307,6 +303,7 @@ func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Pro
 	pinnedpid, pinok := px.getpin(uid, ipp)
 	_, chosen := all[pinnedpid]
 	delete(all, pinnedpid) // mark visited
+
 	if pinok && chosen && local(pinnedpid) {
 		// always favour remote proxy pins over local, if any
 		lopinned = pinnedpid
@@ -549,7 +546,7 @@ func (px *proxifier) RefreshProto(l3 string) {
 			// wgproxy.onProtoChange -> multihost.Refresh -> dialers.Resolve
 			// -> ipmapper.LookupIPNet -> resolver.LocalLookup -> transport.Query
 			// -> ipn.ProxyFor -> px.Lock() -> deadlock
-			if cfg, readd := curp.onProtoChange(); readd {
+			if cfg, readd := curp.OnProtoChange(); readd {
 				// px.addProxy -> px.add -> px.Lock() -> deadlock
 				_, err := px.addProxy(id, cfg)
 				log.I("proxy: refreshProto (%s/%s/%s) re-add; err? %v", id, curp.Type(), curp.GetAddr(), err)

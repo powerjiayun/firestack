@@ -177,7 +177,7 @@ func (h *wgproxy) GetAddr() string {
 }
 
 // onProtoChange implements ipn.Proxy
-func (w *wgproxy) onProtoChange() (string, bool) {
+func (w *wgproxy) OnProtoChange() (string, bool) {
 	_ = w.Refresh() // refresh on proto changes
 	// todo: on refresh err, re-add?
 	// return w.cfg, true
@@ -933,7 +933,7 @@ func (h *wgtun) DNS() string {
 	} else { // unlikely as wireguard config is considered invalid if DNS not set
 		log.E("wg: %s dns: nil", h.id)
 	}
-	return nodns
+	return "" // nodns
 }
 
 // Implements Router

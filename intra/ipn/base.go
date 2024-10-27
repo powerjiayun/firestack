@@ -12,6 +12,7 @@ import (
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/protect"
 	"github.com/celzero/firestack/intra/settings"
@@ -20,13 +21,14 @@ import (
 // base is no-op proxy that dials into the underlying network,
 // which typically is wifi or mobile but may also be a tun device.
 type base struct {
-	protoagnostic                // Dial is proto aware
-	skiprefresh                  // no rebinding necessary on refresh
-	gw                           // dual stack gateway
-	outbound      *protect.RDial // outbound dialer
-	addr          string
-	status        *core.Volatile[int]
-	done          context.CancelFunc
+	nop.NoDNS
+	nop.ProtoAgnostic
+	nop.SkipRefresh
+	nop.GW
+	outbound *protect.RDial // outbound dialer
+	addr     string
+	status   *core.Volatile[int]
+	done     context.CancelFunc
 }
 
 // Base returns a base proxy.
@@ -106,10 +108,6 @@ func (h *base) Probe(network, local string) (protect.PacketConn, error) {
 
 func (h *base) Dialer() protect.RDialer {
 	return h
-}
-
-func (h *base) DNS() string {
-	return nodns
 }
 
 func (h *base) ID() string {

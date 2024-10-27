@@ -9,14 +9,16 @@ package ipn
 import (
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/protect"
 )
 
 // ground is a proxy that does nothing.
 type ground struct {
-	protoagnostic
-	skiprefresh
-	gw
+	nop.NoDNS
+	nop.ProtoAgnostic
+	nop.SkipRefresh
+	nop.GW
 	addr string
 }
 
@@ -25,7 +27,7 @@ var _ Proxy = (*ground)(nil)
 // NewGroundProxy returns a new ground proxy.
 func NewGroundProxy() *ground {
 	h := &ground{
-		gw:   proxynogateway,
+		GW:   nop.ProxyNoGateway,
 		addr: "[::]:0",
 	}
 	return h
@@ -63,10 +65,6 @@ func (h *ground) Probe(network, local string) (protect.PacketConn, error) {
 
 func (h *ground) Dialer() protect.RDialer {
 	return h // no-op dialer
-}
-
-func (h *ground) DNS() string {
-	return nodns
 }
 
 func (h *ground) ID() string {

@@ -18,6 +18,7 @@ import (
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
 	"github.com/celzero/firestack/intra/ipn/multihost"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/protect"
 	"github.com/celzero/firestack/intra/settings"
@@ -26,15 +27,16 @@ import (
 )
 
 type socks5 struct {
-	nofwd                              // no forwarding/listening
-	skiprefresh                        // no refresh
-	gw                                 // dual stack gateway
-	outbound    []proxy.Dialer         // outbound dialers connecting unto upstream proxy
-	id          string                 // unique identifier
-	opts        *settings.ProxyOptions // connect options
-	lastdial    time.Time              // last time this transport attempted a connection
-	status      *core.Volatile[int]    // status of this transport
-	done        context.CancelFunc     // cancel func
+	nop.NoFwd                              // no forwarding/listening
+	nop.NoDNS                              // no dns
+	nop.SkipRefresh                        // no refresh
+	nop.GW                                 // dual stack gateway
+	outbound        []proxy.Dialer         // outbound dialers connecting unto upstream proxy
+	id              string                 // unique identifier
+	opts            *settings.ProxyOptions // connect options
+	lastdial        time.Time              // last time this transport attempted a connection
+	status          *core.Volatile[int]    // status of this transport
+	done            context.CancelFunc     // cancel func
 }
 
 type socks5tcpconn struct {
@@ -211,10 +213,6 @@ func (h *socks5) Dialer() protect.RDialer {
 	return h
 }
 
-func (h *socks5) DNS() string {
-	return nodns
-}
-
 func (h *socks5) ID() string {
 	return h.id
 }
@@ -251,6 +249,6 @@ func (h *socks5) Stop() error {
 	return nil
 }
 
-func (h *socks5) onProtoChange() (string, bool) {
+func (h *socks5) OnProtoChange() (string, bool) {
 	return h.opts.FullUrl(), true
 }

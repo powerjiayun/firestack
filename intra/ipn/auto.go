@@ -15,6 +15,7 @@ import (
 
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/protect"
 	"github.com/celzero/firestack/intra/settings"
@@ -25,9 +26,10 @@ const shortdelay = 200 * time.Millisecond
 
 // exit is a proxy that always dials out to the internet.
 type auto struct {
-	protoagnostic
-	skiprefresh
-	gw
+	nop.NoDNS
+	nop.ProtoAgnostic
+	nop.SkipRefresh
+	nop.GW
 	pxr    Proxies
 	addr   string
 	exp    *core.Sieve[string, int]
@@ -213,11 +215,6 @@ func (h *auto) Dialer() protect.RDialer {
 	return h
 }
 
-// todo: return system DNS
-func (h *auto) DNS() string {
-	return nodns
-}
-
 func (h *auto) ID() string {
 	return Auto
 }
@@ -235,6 +232,7 @@ func (h *auto) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(h, hostportOrIPPortCsv)
 }
 
+// GetAddr implements x.Router.
 func (h *auto) GetAddr() string {
 	return h.addr
 }

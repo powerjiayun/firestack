@@ -26,6 +26,7 @@ import (
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/protect"
 	"github.com/celzero/firestack/intra/settings"
@@ -33,19 +34,20 @@ import (
 )
 
 type piph2 struct {
-	nofwd                        // no forwarding/listening
-	protoagnostic                // since dial, dialts are proto aware
-	skiprefresh                  // no refresh
-	gw                           // dual stack gateway
-	url           string         // h2 proxy url
-	hostname      string         // h2 proxy hostname
-	port          int            // h2 proxy port
-	token         string         // hex, client token
-	toksig        string         // hex, authorizer signed client token
-	rsasig        string         // hex, authorizer unblinded signature
-	client        http.Client    // h2 client, see trType
-	outbound      *protect.RDial // h2 dialer
-	opts          *settings.ProxyOptions
+	nop.NoFwd                        // no forwarding/listening
+	nop.NoDNS                        // no dns
+	nop.ProtoAgnostic                // since dial, dialts are proto aware
+	nop.SkipRefresh                  // no refresh
+	nop.GW                           // dual stack gateway
+	url               string         // h2 proxy url
+	hostname          string         // h2 proxy hostname
+	port              int            // h2 proxy port
+	token             string         // hex, client token
+	toksig            string         // hex, authorizer signed client token
+	rsasig            string         // hex, authorizer unblinded signature
+	client            http.Client    // h2 client, see trType
+	outbound          *protect.RDial // h2 dialer
+	opts              *settings.ProxyOptions
 
 	done context.CancelFunc
 
@@ -468,10 +470,6 @@ func (t *piph2) forward(network, addr string) (protect.Conn, error) {
 
 func (h *piph2) Dialer() protect.RDialer {
 	return h
-}
-
-func (h *piph2) DNS() string {
-	return nodns
 }
 
 func closePipe(ps ...io.Closer) {

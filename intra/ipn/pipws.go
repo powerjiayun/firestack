@@ -20,6 +20,7 @@ import (
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/protect"
 	"github.com/celzero/firestack/intra/settings"
@@ -33,21 +34,22 @@ const (
 )
 
 type pipws struct {
-	nofwd                        // no forwarding/listening
-	protoagnostic                // since dial is proto aware
-	skiprefresh                  // no refresh
-	gw                           // dual stack gateway
-	url           string         // ws proxy url
-	hostname      string         // ws proxy hostname
-	port          int            // ws proxy port
-	token         string         // hex, raw client token
-	toksig        string         // hex, authorizer (rdns) signed client token
-	rsasighash    string         // hex, authorizer sha256(unblinded signature)
-	echcfg        *tls.Config    // ech config
-	client        http.Client    // ws client
-	client3       *http.Client   // ws client for ech
-	outbound      *protect.RDial // ws dialer
-	lastdial      time.Time      // last dial time
+	nop.NoFwd                        // no forwarding/listening
+	nop.NoDNS                        // no dns
+	nop.ProtoAgnostic                // since dial is proto aware
+	nop.SkipRefresh                  // no refresh
+	nop.GW                           // dual stack gateway
+	url               string         // ws proxy url
+	hostname          string         // ws proxy hostname
+	port              int            // ws proxy port
+	token             string         // hex, raw client token
+	toksig            string         // hex, authorizer (rdns) signed client token
+	rsasighash        string         // hex, authorizer sha256(unblinded signature)
+	echcfg            *tls.Config    // ech config
+	client            http.Client    // ws client
+	client3           *http.Client   // ws client for ech
+	outbound          *protect.RDial // ws dialer
+	lastdial          time.Time      // last dial time
 
 	done context.CancelFunc // cancel func
 
@@ -341,12 +343,9 @@ func (t *pipws) forward(network, addr string) (protect.Conn, error) {
 	return c, nil
 }
 
+// Dialer implements Proxy.
 func (t *pipws) Dialer() protect.RDialer {
 	return t
-}
-
-func (*pipws) DNS() string {
-	return nodns
 }
 
 func (t *pipws) ech() []byte {
