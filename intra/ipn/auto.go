@@ -20,8 +20,8 @@ import (
 	"github.com/celzero/firestack/intra/settings"
 )
 
-var ttl30s = 30 * time.Second
-var shortdelay = 200 * time.Millisecond
+const ttl30s = 30 * time.Second
+const shortdelay = 200 * time.Millisecond
 
 // exit is a proxy that always dials out to the internet.
 type auto struct {
@@ -30,7 +30,7 @@ type auto struct {
 	gw
 	pxr    Proxies
 	addr   string
-	exp    *core.ExpMap[string, int]
+	exp    *core.Sieve[string, int]
 	ba     *core.Barrier[bool, string]
 	status *core.Volatile[int]
 }
@@ -40,7 +40,7 @@ func NewAutoProxy(ctx context.Context, pxr Proxies) *auto {
 	h := &auto{
 		pxr:    pxr,
 		addr:   "127.5.51.52:5321",
-		exp:    core.NewExpiringMap[string, int](ctx),
+		exp:    core.NewSieve[string, int](ctx, ttl30s),
 		ba:     core.NewBarrier[bool](ttl30s),
 		status: core.NewVolatile(TUP),
 	}
@@ -71,7 +71,7 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 	warp, waerr := h.pxr.ProxyFor(RpnWg)
 	exit64, ex64err := h.pxr.ProxyFor(Rpn64)
 
-	previdx, recent := h.exp.V(remote)
+	previdx, recent := h.exp.Get(remote)
 
 	c, who, err := core.Race(
 		network+".dial-auto."+remote,
@@ -126,15 +126,15 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 				return nil, ctx.Err()
 			case <-time.After(shortdelay):
 			}
-			return dialProxy(exit64, network, local, remote)
+			return h.dialIfHealthy(exit64, network, local, remote)
 		},
 	)
 
 	defer localDialStatus(h.status, err)
 	if err != nil {
-		h.exp.Delete(remote)
+		h.exp.Del(remote)
 	} else {
-		h.exp.K(remote, who, ttl30s)
+		h.exp.Put(remote, who)
 	}
 	maybeKeepAlive(c)
 	log.I("proxy: auto: w(%d) pin(%t/%d), dial(%s) %s; err? %v",
