@@ -49,8 +49,6 @@ var _ dnsx.Transport = (*dot)(nil)
 
 // NewTLSTransport returns a DNS over TLS transport, ready for use.
 func NewTLSTransport(ctx context.Context, id, rawurl string, addrs []string, px ipn.Proxies, ctl protect.Controller) (t *dot, err error) {
-	ctx, done := context.WithCancel(ctx)
-
 	tlscfg := &tls.Config{
 		MinVersion:             tls.VersionTLS12,
 		SessionTicketsDisabled: false,
@@ -75,7 +73,7 @@ func NewTLSTransport(ctx context.Context, id, rawurl string, addrs []string, px 
 	if px != nil {
 		relay, _ = px.ProxyFor(id)
 	}
-	rd := protect.MakeNsRDial(id, ctx, ctl)
+	ctx, done := context.WithCancel(ctx)
 	hostname := parsedurl.Hostname()
 	if len(hostname) <= 0 {
 		hostname = rawurl
@@ -95,7 +93,7 @@ func NewTLSTransport(ctx context.Context, id, rawurl string, addrs []string, px 
 		addr:          url2addr(rawurl), // may or may not be ipaddr
 		status:        x.Start,
 		proxies:       px,
-		rd:            rd,
+		rd:            protect.MakeNsRDial(id, ctx, ctl),
 		relay:         relay,
 		pool:          core.NewMultConnPool[uintptr](ctx),
 		est:           core.NewP50Estimator(ctx),
@@ -262,7 +260,7 @@ func (t *dot) sendRequest(pid string, q *dns.Msg) (ans *dns.Msg, elapsed time.Du
 	}
 
 	if err == nil {
-		ans, elapsed, err = t.c.ExchangeWithConn(q, conn)
+		ans, elapsed, err = t.c.ExchangeWithConnContext(t.ctx, q, conn)
 	} // fallthrough
 
 	raddr := remoteAddrIfAny(conn)
