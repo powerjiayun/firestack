@@ -145,3 +145,21 @@ outer:
 	}
 	return // zz
 }
+
+func Every(id string, d time.Duration, f func()) context.CancelFunc {
+	ctx, done := context.WithCancel(context.Background())
+	Go("every."+id, func() {
+		t := time.NewTicker(d)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				f()
+			}
+		}
+	})
+	return done
+}
