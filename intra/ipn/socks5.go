@@ -90,13 +90,12 @@ func (c *socks5udpconn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 
 func NewSocks5Proxy(id string, ctl protect.Controller, po *settings.ProxyOptions) (_ *socks5, err error) {
 	tx.Debug = settings.Debug
-	ctx, done := context.WithCancel(context.Background())
-
 	if po == nil {
 		log.W("proxy: err setting up socks5(%v): %v", po, err)
 		return nil, errMissingProxyOpt
 	}
 
+	ctx, done := context.WithCancel(context.Background())
 	// always with a network namespace aware dialer
 	dialer := protect.MakeNsRDial(id, ctx, ctl)
 	// todo: support connecting from src
@@ -129,6 +128,7 @@ func NewSocks5Proxy(id string, ctl protect.Controller, po *settings.ProxyOptions
 	}
 
 	if len(clients) == 0 && err != nil {
+		defer done()
 		log.W("proxy: err creating socks5 for %v (opts: %v): %v",
 			mh, po, err)
 		return nil, err
