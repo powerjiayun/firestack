@@ -42,13 +42,14 @@ type transport struct {
 	done     context.CancelFunc
 	id       string
 	addrport string // hostname, ip:port, protect.UidSelf:53, protect.System:53
-	lastaddr string // last resolved addr
-	status   int
 	client   *dns.Client
 	dialer   *protect.RDial
 	proxies  ipn.Proxies // should never be nil
 	relay    ipn.Proxy   // may be nil
 	est      core.P2QuantileEstimator
+
+	lastaddr *core.Volatile[string] // last resolved addr
+	status   *core.Volatile[int]    // status of the transport
 }
 
 var _ dnsx.Transport = (*transport)(nil)
@@ -87,7 +88,8 @@ func newTransport(pctx context.Context, id string, do *settings.DNSOptions, px i
 		done:     done,
 		id:       id,
 		addrport: do.AddrPort(), // may be hostname:port or ip:port
-		status:   dnsx.Start,
+		status:   core.NewVolatile(dnsx.Start),
+		lastaddr: core.NewZeroVolatile[string](),
 		dialer:   protect.MakeNsRDial(id, ctx, ctl),
 		proxies:  px,    // never nil; see above
 		relay:    relay, // may be nil
@@ -212,7 +214,7 @@ func (t *transport) send(network, pid string, q *dns.Msg) (ans *dns.Msg, elapsed
 		dialers.Confirm2(t.addrport, lastaddr)
 	}
 
-	t.lastaddr = lastaddr
+	t.lastaddr.Store(lastaddr)
 
 	return
 }
@@ -231,7 +233,7 @@ func (t *transport) Query(network string, q *dns.Msg, smm *x.DNSSummary) (ans *d
 		status = qerr.Status()
 		log.W("dns53: (%s) err(%v) / size(%d)", t.id, err, xdns.Len(ans))
 	}
-	t.status = status
+	t.status.Store(status)
 
 	smm.Latency = elapsed.Seconds()
 	smm.RData = xdns.GetInterestingRData(ans)
@@ -267,7 +269,7 @@ func (t *transport) P50() int64 {
 }
 
 func (t *transport) GetAddr() string {
-	addr := t.lastaddr
+	addr := t.lastaddr.Load()
 	if len(addr) == 0 {
 		// may be protect.UidSelf (for bootstrap/default) or protect.System
 		addr = t.addrport
@@ -282,7 +284,7 @@ func (t *transport) GetAddr() string {
 }
 
 func (t *transport) Status() int {
-	return t.status
+	return t.status.Load()
 }
 
 func (t *transport) Stop() error {
