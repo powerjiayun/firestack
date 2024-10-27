@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	anyaddr4 = netip.IPv4Unspecified()
-	anyaddr6 = netip.IPv6Unspecified()
+	anyaddr4        = netip.IPv4Unspecified()
+	anyaddr6        = netip.IPv6Unspecified()
+	alwaysDualStack = false
 )
 
 // Adapter to keep gomobile happy as it can't export net.Conn
@@ -45,8 +46,8 @@ type RDialer interface {
 	// a *net.UDPConn if network is "udp" or "udp4" or "udp6".
 	Dial(network, addr string) (Conn, error)
 	// DialBind is like Dial but creates a connection to
-	// the remote address bounded from the local address.
-	// If local is invalid ip:port (ip must be present),
+	// the remote address bounded from the local port (not ip).
+	// If local is invalid ip:port (ip must be present but not used),
 	// it delegates to Dial(network, remote).
 	DialBind(network, local, remote string) (Conn, error)
 	// Announce announces the local address. network must be
@@ -126,9 +127,11 @@ func (d *RDial) DialBind(network, local, remote string) (net.Conn, error) {
 		// uport may be 0, which is "valid"
 		uport, _ := strconv.Atoi(port) // should not error
 		anyaddr := anyaddr6
-		// ipp invalid when local is without ip; ex: ":port"
-		if ipp, _ := netip.ParseAddrPort(local); ipp.Addr().Is4() {
-			anyaddr = anyaddr4
+		if !alwaysDualStack {
+			// ipp invalid when local is without ip; ex: ":port"
+			if ipp, _ := netip.ParseAddrPort(local); ipp.Addr().Is4() {
+				anyaddr = anyaddr4
+			}
 		}
 		// ip addr binding is left upto dialer's Control
 		// which is "namespace" aware (on Android)
@@ -140,12 +143,18 @@ func (d *RDial) DialBind(network, local, remote string) (net.Conn, error) {
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
+		if alwaysDualStack {
+			network = "tcp"
+		}
 		if onlyport.IsValid() { // valid even when port is 0
 			rd.LocalAddr = net.TCPAddrFromAddrPort(onlyport)
 			log.V("xdial: DialBind: (o: %s); %s %s=>%s",
 				d.owner, network, rd.LocalAddr, remote)
 		}
 	case "udp", "udp4", "udp6":
+		if alwaysDualStack {
+			network = "udp"
+		}
 		if onlyport.IsValid() { // valid even when port is 0
 			rd.LocalAddr = net.UDPAddrFromAddrPort(onlyport)
 			log.V("xdial: DialBind: (o: %s); %s %s=>%s",
@@ -156,7 +165,7 @@ func (d *RDial) DialBind(network, local, remote string) (net.Conn, error) {
 			d.owner, network, local, remote)
 	}
 
-	// equivalent to d.dial()
+	// equivalent to d.dial() if LocalAddr is not set
 	return rd.Dial(network, remote)
 }
 

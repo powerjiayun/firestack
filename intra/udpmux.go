@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/celzero/firestack/intra/core"
+	"github.com/celzero/firestack/intra/dialers"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/settings"
 )
@@ -519,9 +520,9 @@ func (e *muxTable) associate(cid, pid, uid string, src, dst netip.AddrPort, mk a
 	if mxr == nil {
 		// dst may be of a different family than src (4to6, 6to4 etc)
 		// and so, rely on dst to determine the family to listen on.
-		proto := "udp6"
+		proto := "udp"
 		anyaddr := anyaddr6
-		if dst.Addr().Is4() {
+		if dst.Addr().Is4() && !dialers.Use6() {
 			proto = "udp4"
 			anyaddr = anyaddr4
 		}
