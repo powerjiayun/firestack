@@ -178,7 +178,7 @@ func (t *dot) tlsdial(rd protect.RDialer) (_ *dns.Conn, who uintptr, err error) 
 		_ = c.SetDeadline(time.Now().Add(dottimeout))
 		// todo: higher timeout for if using proxy dialer
 		// _ = c.SetDeadline(time.Now().Add(dottimeout * 2))
-		return &dns.Conn{Conn: c, UDPSize: t.c.UDPSize}, who, err
+		return &dns.Conn{Conn: c}, who, err
 	} else {
 		if err == nil {
 			err = errNoNet
@@ -231,7 +231,7 @@ func (t *dot) fromPool(id uintptr) (c *dns.Conn) {
 	}
 	var ok bool
 	if c, ok = pooled.(*dns.Conn); !ok { // unlikely
-		return &dns.Conn{Conn: pooled, UDPSize: t.c.UDPSize}
+		return &dns.Conn{Conn: pooled}
 	}
 	log.V("dot: pool: (%s) got conn from %v", t.id, id)
 	return
