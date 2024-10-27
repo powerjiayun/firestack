@@ -47,6 +47,7 @@ func (w *gw) ok(ip netip.Addr) bool  { return w.ok4(ip) || w.ok6(ip) }
 func (w *gw) ok4(ip netip.Addr) bool { return w.IP4() && ip.IsValid() && ip.Is4() }
 func (w *gw) ok6(ip netip.Addr) bool { return w.IP6() && ip.IsValid() && ip.Is6() }
 
+// Reaches implements Router.
 func (w *gw) Reaches(hostportOrIPPortCsv string) bool {
 	if len(hostportOrIPPortCsv) <= 0 {
 		return true

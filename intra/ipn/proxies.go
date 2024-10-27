@@ -68,7 +68,8 @@ var (
 	errUnexpectedProxy      = errors.New("proxy: unexpected type")
 	errAddProxy             = errors.New("proxy: add failed")
 	errProxyNotFound        = errors.New("proxy: not found")
-	errGetProxyTimeout      = errors.New("proxy: gettimeout")
+	errGetProxyTimeout      = errors.New("proxy: get timeout")
+	errProxyDown            = errors.New("proxy: all down")
 	errMissingProxyOpt      = errors.New("proxy: opts nil")
 	errNoProxyConn          = errors.New("proxy: not a tcp/udp conn")
 	errNotUDPConn           = errors.New("proxy: not a udp conn")
@@ -408,7 +409,7 @@ func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Pro
 
 	log.VV("proxy: pin: %s+%s; miss: %v; notok: %v; noroute: %v",
 		uid, ipp, missproxies, notokproxies, norouteproxies)
-	return nil, errProxyNotFound
+	return nil, errProxyDown
 }
 
 func (px *proxifier) pinID(uid string, ipp netip.AddrPort, id string) (Proxy, error) {
