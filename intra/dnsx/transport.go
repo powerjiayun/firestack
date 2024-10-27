@@ -621,7 +621,7 @@ func (r *resolver) determineTransport(id string) Transport {
 	if len(id1) > 0 {
 		t1 = r.transports[id1]
 	}
-	tf = r.transports[CT+Default]
+	tf = r.transports[Default]
 	r.RUnlock()
 
 	if t0 != nil {
