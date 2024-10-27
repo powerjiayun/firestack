@@ -120,9 +120,14 @@ func (s *ifstats) LatestRecentHandshake() int64 {
 	return least
 }
 
-func ReadStats(id, config string) *ifstats {
+func ReadStats(id string, cfn core.Work[string]) *ifstats {
 	v, err := ba.DoIt(id, func() (*ifstats, error) {
-		return readStats(config), nil
+		cfg, err := cfn()
+		if err != nil || len(cfg) <= 0 {
+			log.W("wg: %s stats: ipcget: %v", id, err)
+			return nil, err
+		}
+		return readStats(cfg), nil
 	})
 	if err != nil { // v is nil when ba.Do timesout
 		log.E("wg: ReadStats: nil for %s, err: %v", id, err)
