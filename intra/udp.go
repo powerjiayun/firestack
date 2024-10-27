@@ -43,8 +43,7 @@ import (
 
 type udpHandler struct {
 	*baseHandler
-	mux  *muxTable   // EIM/EIF table
-	prox ipn.Proxies // proxy provider for egress
+	mux *muxTable // EIM/EIF table
 }
 
 var (
