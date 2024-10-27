@@ -454,7 +454,7 @@ func (s *overwriteSplitter) Write(b []byte) (n int, err error) {
 	}
 
 	// also: github.com/hufrea/byedpi/blob/bbe95222/desync.c#L115
-	time.Sleep(3 * time.Millisecond)
+	time.Sleep(3 * time.Microsecond)
 	// restore the first-half of the payload so that it gets picked up on retranmission.
 	copy(firstSegment, b[:len(s.payload)])
 
