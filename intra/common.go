@@ -366,7 +366,9 @@ func (h *baseHandler) dnsOverride(conn net.Conn, addr netip.AddrPort) bool {
 	// addr2 := &net.TCPAddr{IP: addr.IP, Port: addr.Port}
 	if addr.IsValid() && h.resolver.IsDnsAddr(addr) {
 		// conn closed by the resolver
-		h.resolver.Serve(h.proto, conn)
+		core.Gx(h.proto+".dns", func() {
+			h.resolver.Serve(h.proto, conn)
+		})
 		return true
 	}
 	return false
