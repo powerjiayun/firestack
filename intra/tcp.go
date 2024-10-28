@@ -125,7 +125,7 @@ func (h *tcpHandler) ReverseProxy(gconn *netstack.GTCPConn, in net.Conn, to, fro
 	}
 
 	core.Go("tcp.reverse:"+cid, func() {
-		h.forward(gconn, &rwext{in}, smm)
+		h.forward(gconn, rwext{in}, smm)
 	})
 	return true
 }
