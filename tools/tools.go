@@ -31,5 +31,6 @@ package tools
 
 import (
 	_ "github.com/crazy-max/xgo"
+	_ "github.com/tailscale/depaware/depaware"
 	_ "golang.org/x/mobile/cmd/gomobile"
 )
