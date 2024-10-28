@@ -19,6 +19,7 @@ import (
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
+	"github.com/celzero/firestack/intra/ipn/nop"
 	"github.com/celzero/firestack/intra/ipn/warp"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/netstack"
@@ -163,8 +164,8 @@ type proxifier struct {
 var _ Proxies = (*proxifier)(nil)
 var _ x.Rpn = (*proxifier)(nil)
 var _ x.Router = (*proxifier)(nil)
-var _ x.Router = (*gw)(nil)
 var _ protect.RDialer = (Proxy)(nil)
+var _ Proxy = (*nop.NoProxy)(nil)
 
 func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener) *proxifier {
 	if c == nil || o == nil {

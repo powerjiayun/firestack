@@ -12,6 +12,7 @@ import (
 	"time"
 
 	x "github.com/celzero/firestack/intra/backend"
+	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
 	"github.com/celzero/firestack/intra/protect"
 )
@@ -123,3 +124,25 @@ func (NoDNS) DNS() string {
 func now() int64 {
 	return time.Now().UnixMilli()
 }
+
+var errNop = errors.New("proxy: nop")
+
+type NoProxy struct {
+	NoDNS
+	ProtoAgnostic
+	SkipRefresh
+	NoFwd
+	GW
+}
+
+func (NoProxy) Handle() uintptr                                       { return core.Nobody }
+func (NoProxy) ID() string                                            { return "" }
+func (NoProxy) Type() string                                          { return "" }
+func (NoProxy) Router() x.Router                                      { return nil }
+func (NoProxy) Reaches(string) bool                                   { return false }
+func (NoProxy) Dial(string, string) (protect.Conn, error)             { return nil, errNop }
+func (NoProxy) DialBind(string, string, string) (protect.Conn, error) { return nil, errNop }
+func (NoProxy) Dialer() protect.RDialer                               { return nil }
+func (NoProxy) Status() int                                           { return 0 }
+func (NoProxy) GetAddr() string                                       { return "" }
+func (NoProxy) Stop() error                                           { return nil }

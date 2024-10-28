@@ -19,6 +19,7 @@ const ( // see ipn/proxies.go
 	RpnWs   = PIPWS + RPN   // RPN WebSockets
 	RpnH2   = PIPH2 + RPN   // RPN HTTP/2
 	Rpn64   = NAT64 + RPN   // RPN Exit hopping over NAT64
+	RpnSE   = SE + RPN      // RPN SurfEasy
 	OrbotS5 = "OrbotSocks5" // Orbot: Base Tor-as-a-SOCKS5 proxy
 	OrbotH1 = "OrbotHttp1"  // Orbot: Base Tor-as-a-HTTP/1.1 proxy
 
@@ -34,6 +35,7 @@ const ( // see ipn/proxies.go
 	INTERNET = "net"    // egress network, ex: Exit
 	RPN      = "rpn"    // Rethink Proxy Network
 	NAT64    = "nat64"  // A NAT64 router
+	SE       = "se"     // SurfEasy
 
 	// status of proxies
 
