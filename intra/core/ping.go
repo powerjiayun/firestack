@@ -33,13 +33,8 @@ const (
 )
 
 // from: github.com/go-ping/ping/blob/caaf2b72ea5/ping.go
-func Ping(c net.PacketConn, ipp netip.AddrPort) (ok bool, rtt time.Duration, err error) {
+func Ping(pc net.PacketConn, ipp netip.AddrPort) (ok bool, rtt time.Duration, err error) {
 	v4 := ipp.Addr().Is4()
-	err = setttl(c, v4)
-	if err != nil {
-		log.D("core: icmp: setttl failed: %v", err)
-	}
-	dst := net.UDPAddrFromAddrPort(ipp)
 	seq := 1 // todo: seq?
 	var typ icmp.Type = ipv4.ICMPTypeEcho
 	if !v4 {
@@ -67,29 +62,15 @@ func Ping(c net.PacketConn, ipp netip.AddrPort) (ok bool, rtt time.Duration, err
 		},
 	}
 	var pkt []byte
-	var n int
-	var from net.Addr
 	pkt, err = msg.Marshal(nil)
 	if err != nil {
 		return
 	}
 
-	n, err = c.WriteTo(pkt, dst)
-	log.D("core: icmp: egress: write(=> %v) ping; done %d/%d; err? %v",
-		ipp, n, len(pkt), err)
-	if err != nil {
-		return
-	}
-	extend(c)
-	n, from, err = c.ReadFrom(pkt)
-	log.D("core: icmp: ingress: read(<= %v / %v) ping done; done %d; err? %v",
-		ipp, from, n, err)
-	if err != nil {
-		return
-	}
+	pkt, _ = Echo(pc, pkt, net.UDPAddrFromAddrPort(ipp), v4)
 
 	var m *icmp.Message
-	if m, err = icmp.ParseMessage(proto, pkt[:n]); err != nil {
+	if m, err = icmp.ParseMessage(proto, pkt); err != nil {
 		return
 	}
 
@@ -119,6 +100,30 @@ func Ping(c net.PacketConn, ipp netip.AddrPort) (ok bool, rtt time.Duration, err
 	default:
 		err = fmt.Errorf("icmp: err reply type: '%T' '%v'", pkt, pkt)
 	}
+	return
+}
+
+func Echo(pc net.PacketConn, pkt []byte, dst net.Addr, v4 bool) (reply []byte, from net.Addr) {
+	err := setttl(pc, v4)
+	if err != nil {
+		log.D("core: icmp: setttl failed: %v", err)
+	}
+
+	n, err := pc.WriteTo(pkt, dst)
+	log.D("core: icmp: egress: write(=> %v) ping; done %d/%d; err? %v",
+		dst, n, len(pkt), err)
+	if err != nil {
+		// TODO: unreachable reply?
+		return
+	}
+
+	extend(pc)
+	n, from, err = pc.ReadFrom(pkt)
+	reply = pkt[:n] // trunc
+
+	log.D("core: icmp: ingress: read(<= %v / %v) ping done; done %d; err? %v",
+		dst, from, n, err)
+	// TODO: on err, unreachable reply?
 	return
 }
 
