@@ -85,7 +85,7 @@ CV4Ks2dH/hzg1cEo70qLRDEmBDeNiXQ2Lu+lIg+DdEmSx/cQwgwp+7e9un/jX9Wf
 )
 
 var (
-	version       = "undefined"
+	// version       = "undefined"
 	refreshPeriod = 4 * time.Hour
 	defaultGeos   = []se.SEGeoEntry{
 		{CountryCode: "EU", Country: "Europe"},
@@ -130,7 +130,6 @@ func NewSEasyClient(ctx context.Context, exit protect.RDialer) (sec *se.SEClient
 		}
 	}
 	if err != nil {
-		log.E("se: failed to discover %v endpoints: %v", geos, err)
 		return
 	}
 
@@ -151,7 +150,7 @@ func refresh(ctx context.Context, sec *se.SEClient) {
 	err = sec.DeviceGeneratePassword(rctx)
 	loged(err)("se: auth refresh; err? %v", err)
 
-	return // todo: retry on error
+	// todo: retry on error?
 }
 
 func loged(err error) log.LogFn {
