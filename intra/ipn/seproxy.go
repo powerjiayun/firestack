@@ -98,8 +98,10 @@ func NewSEasyProxy(ctx context.Context, c protect.Controller, exit Proxy) (*sepr
 		return headerBasicAuth(sec.GetProxyCredentials())
 	}
 
-	der, _ := pem.Decode([]byte(seasy.MISSING_CHAIN_CERT))
-	missingcert, _ := x509.ParseCertificate(der.Bytes)
+	var missingcert *x509.Certificate
+	if der, _ := pem.Decode([]byte(seasy.MISSING_CHAIN_CERT)); der != nil {
+		missingcert, _ = x509.ParseCertificate(der.Bytes)
+	}
 
 	now := time.Now()
 	if missingcert != nil && missingcert.NotAfter.Before(now) {
