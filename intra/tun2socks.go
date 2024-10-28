@@ -99,7 +99,9 @@ func Slowdown(y bool) {
 func Experimental(y bool) {
 	// todo: move to its own method
 	wgok := settings.ExperimentalWireGuard.CompareAndSwap(!y, y)
-	fwdok := settings.PortForward.CompareAndSwap(!y, y)
+	// PortForwarding does not work on Android as-is.
+	// fwdok := settings.PortForward.CompareAndSwap(!y, y)
+	fwdok := false
 	log.I("tun: experimental settings? %t / wg? %t, portfwd? %t", y, wgok, fwdok)
 }
 
