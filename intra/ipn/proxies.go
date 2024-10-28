@@ -852,15 +852,6 @@ func localDialStrat(d *protect.RDial, network, local, remote string) (protect.Co
 	return dialers.SplitDialBind(d, network, local, remote)
 }
 
-func closed[T any](ch <-chan T) bool {
-	select {
-	case <-ch:
-		return true
-	default:
-	}
-	return false
-}
-
 func firstEmpty(arr []string) bool {
 	return len(arr) <= 0 || len(arr[0]) <= 0
 }
