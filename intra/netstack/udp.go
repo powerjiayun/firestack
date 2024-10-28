@@ -128,15 +128,6 @@ func udpForwarder(s *stack.Stack, h GUDPConnHandler) *udp.Forwarder {
 		dst := localAddrPort(id)
 
 		gc := makeGUDPConn(s, req, src, dst)
-		// setup to recv right away, so that netstack's internal state is consistent
-		// in case there are multiple forwarders dispatching from the TUN device.
-		if earlyConnect && !settings.SingleThreaded.Load() {
-			if err := gc.Establish(); err != nil {
-				log.E("ns: udp: forwarder: connect: %v; src(%v) dst(%v)", err, src, dst)
-				go h.Error(gc, src, dst, err)
-				return
-			}
-		}
 
 		demux := func(ingress net.Conn, newdst netip.AddrPort) error {
 			if newdst.Compare(dst) == 0 {
@@ -149,11 +140,15 @@ func udpForwarder(s *stack.Stack, h GUDPConnHandler) *udp.Forwarder {
 			return InboundUDP(s, ingress, src, newdst, h)
 		}
 
-		// handler must return as soon as possible, or it'll end up blocking
-		// nestack processors; see: netstack/dispatcher.go:newReadvDispatcher
-		if earlyConnect {
-			// gc is already connected; safe to call the handler async
-			go handle(h, gc, src, dst, demux)
+		// setup to recv right away, so that netstack's internal state is consistent
+		// in case there are multiple forwarders dispatching from the TUN device.
+		if earlyConnect && !settings.SingleThreaded.Load() {
+			if err := gc.Establish(); err != nil {
+				log.E("ns: udp: forwarder: connect: %v; src(%v) dst(%v)", err, src, dst)
+				go h.Error(gc, src, dst, err)
+			} else { // gc already connected; safe to call the handler async
+				go handle(h, gc, src, dst, demux)
+			}
 		} else {
 			// handler must connect sync; blocking netstack's processor
 			// but perform other ops like r/w to/from src/dst async.

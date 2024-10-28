@@ -102,24 +102,17 @@ func tcpForwarder(s *stack.Stack, h GTCPConnHandler) *tcp.Forwarder {
 		// demuxer.handlePacket -> find matching endpoint -> queue-packet -> send/recv conn (ep)
 		// ref: github.com/google/gvisor/blob/be6ffa7/pkg/tcpip/stack/transport_demuxer.go#L180
 		gtcp := makeGTCPConn(s, req, src, dst)
+
 		// setup endpoint right away, so that netstack's internal state is consistent
 		// in case there are multiple forwarders dispatching from the TUN device.
 		if earlyConnect && !settings.SingleThreaded.Load() {
-			if open, err := gtcp.tryConnect(); err != nil || !open {
-				log.E("ns: tcp: forwarder: tryConnect err src(%v) => dst(%v); open? %t, err(%v)", src, dst, open, err)
-				if err == nil {
-					err = errMissingEp
-				}
-				go h.Error(gtcp, src, dst, err) // error
-				return
+			opened, err := gtcp.tryConnect()
+			if err != nil || !opened {
+				log.E("ns: tcp: forwarder: tryConnect err src(%v) => dst(%v); open? %t, err(%v)", src, dst, opened, err)
+				go h.Error(gtcp, src, dst, core.OneErr(err, errMissingEp)) // error
+			} else { // gtcp is connected, optimize and proxy async
+				go h.Proxy(gtcp, src, dst)
 			}
-		}
-
-		// must not block forever as it may block netstack
-		// see: netstack/dispatcher.go:newReadvDispatcher
-		if earlyConnect {
-			// if gtcp is connected, optimize and proxy async
-			go h.Proxy(gtcp, src, dst)
 		} else {
 			// call the handler in-line, blocking the netstack "processor",
 			// however; handler must r/w to/from src/dst async after connect.
