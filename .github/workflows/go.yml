@@ -152,6 +152,8 @@ jobs:
         with:
           go-version: '>=1.23'
           cache: false
+      # github.com/tailscale/tailscale/blob/93324cc7b/.github/workflows/depaware.yml
+      # consolidated in: github.com/tailscale/tailscale/commit/4022796484
       - name: 📦 Depaware
         run: go run github.com/tailscale/depaware --check
           github.com/celzero/firestack/intra
