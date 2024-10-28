@@ -724,7 +724,7 @@ func (px *proxifier) RegisterWarp(pub string) ([]byte, error) {
 func (px *proxifier) RegisterSE() error {
 	sec := px.sec
 	if sec == nil {
-		return px.lastSeErr
+		return errors.Join(errMissingSEClient, px.lastSeErr)
 	}
 
 	sep, err := NewSEasyProxy(px.ctx, px.ctl, sec)
@@ -742,8 +742,8 @@ func (px *proxifier) RegisterSE() error {
 // Warp implements x.Rpn.
 func (px *proxifier) Warp() (x.Proxy, error) {
 	warp, err := px.ProxyFor(RpnWg)
-	if err == nil && px.lastWarpErr != nil {
-		return nil, px.lastWarpErr
+	if warp == nil {
+		return nil, errors.Join(err, px.lastWarpErr)
 	}
 	return warp, err
 }
@@ -766,8 +766,8 @@ func (px *proxifier) Exit64() (x.Proxy, error) {
 // SE implements x.Rpn.
 func (px *proxifier) SE() (x.Proxy, error) {
 	sep, err := px.ProxyFor(RpnWg)
-	if err == nil && px.lastWarpErr != nil {
-		return nil, px.lastWarpErr
+	if sep == nil {
+		return nil, errors.Join(err, px.lastSeErr)
 	}
 	return sep, err
 }
