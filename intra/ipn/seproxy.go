@@ -28,6 +28,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"time"
 
 	se "github.com/Snawoot/opera-proxy/seclient"
@@ -52,9 +53,12 @@ const (
 	seHostname    = "sec-tunnel.com"
 )
 
-var crlf = []byte("\r\n\r\n")
-
 var (
+	crlf      = []byte("\r\n\r\n")
+	fourHours = 4 * time.Hour
+)
+var (
+	errMissingSEClient = errors.New("se: missing client")
 	errSEProxyBlocks   = errors.New("se: remote blocked request")
 	errSEProxyResponse = errors.New("se: bad response")
 	errSENoEndpoints   = errors.New("se: no endpoints")
@@ -70,7 +74,9 @@ type seproxy struct {
 	nop.ProtoAgnostic
 	nop.GW
 
-	addrs     []se.SEIPEntry
+	done      context.CancelFunc
+	sec       *seasy.SEApi
+	addrs     []netip.AddrPort
 	outbounds []proxy.Dialer
 	status    *core.Volatile[int]
 }
@@ -85,12 +91,20 @@ type sedialer struct {
 var _ Proxy = (*seproxy)(nil)
 var _ proxy.Dialer = (*sedialer)(nil)
 
-func NewSEasyProxy(ctx context.Context, c protect.Controller, exit Proxy) (*seproxy, error) {
-	sec, endpoints, err := seasy.NewSEasyClient(ctx, exit)
-	if err != nil {
+func NewSEasyProxy(ctx context.Context, c protect.Controller, sec *seasy.SEApi) (*seproxy, error) {
+	if sec == nil {
+		return nil, errMissingSEClient
+	}
+
+	ctx, done := context.WithCancel(ctx)
+	if _, err := sec.Start(ctx); err != nil {
+		done()
 		return nil, err
 	}
-	if len(endpoints) <= 0 {
+
+	endpoints := sec.Endpoints()
+	if len(endpoints) <= 0 { // unlikely
+		done()
 		return nil, errSENoEndpoints
 	}
 
@@ -118,8 +132,13 @@ func NewSEasyProxy(ctx context.Context, c protect.Controller, exit Proxy) (*sepr
 
 	log.I("proxy: se: started with %d endpoints %v", len(seds), endpoints)
 
+	stopRefreshes := core.Every("sep.refresh", fourHours, sec.Refresh)
+	context.AfterFunc(ctx, stopRefreshes)
+
 	return &seproxy{
-		addrs:     endpoints,
+		done:      done,
+		sec:       sec,
+		addrs:     sec.Addrs(),
 		outbounds: seds,
 		status:    core.NewVolatile(TUP),
 	}, nil
@@ -324,7 +343,7 @@ func (h *seproxy) GetAddr() string {
 		return ""
 	}
 	n := rand.IntN(len(h.addrs))
-	return h.addrs[n].NetAddr()
+	return h.addrs[n].String()
 }
 
 func (h *seproxy) Status() int {
@@ -333,6 +352,7 @@ func (h *seproxy) Status() int {
 
 func (h *seproxy) Stop() error {
 	h.status.Store(END)
+	h.done()
 	log.I("proxy: se: stopped")
 	return nil
 }

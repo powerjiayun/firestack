@@ -21,7 +21,7 @@ import (
 var (
 	anyaddr4        = netip.IPv4Unspecified()
 	anyaddr6        = netip.IPv6Unspecified()
-	alwaysDualStack = false
+	alwaysDualStack = true
 )
 
 // Adapter to keep gomobile happy as it can't export net.Conn

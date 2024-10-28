@@ -10,16 +10,15 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	x "github.com/celzero/firestack/intra/backend"
 	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
 	"github.com/celzero/firestack/intra/ipn/nop"
+	"github.com/celzero/firestack/intra/ipn/seasy"
 	"github.com/celzero/firestack/intra/ipn/warp"
 	"github.com/celzero/firestack/intra/log"
 	"github.com/celzero/firestack/intra/netstack"
@@ -157,8 +156,13 @@ type proxifier struct {
 	grounded *ground // grounded proxy, never changes
 	auto     *auto   // auto proxy, never changes
 
-	warpc  *warp.Client // warp registration, never changes
-	protos string       // ip4, ip6, ip46
+	warpc *warp.Client // warp registration, never changes
+	sec   *seasy.SEApi // se proxy registration, never changes; may be nil
+
+	lastSeErr   error // se proxy registration error
+	lastWarpErr error // warp registration error
+
+	protos string // ip4, ip6, ip46
 }
 
 var _ Proxies = (*proxifier)(nil)
@@ -190,6 +194,7 @@ func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener)
 	pxr.uidPins = core.NewSieve2K[string, netip.AddrPort, string](pctx, pintimeout)
 
 	pxr.warpc = warp.NewWarpClient(pctx, c)
+	pxr.sec, pxr.lastSeErr = seasy.NewSEasyClient(pxr.exit)
 	pxr.add(pxr.exit)     // fixed
 	pxr.add(pxr.exit64)   // fixed
 	pxr.add(pxr.base)     // fixed
@@ -705,6 +710,7 @@ func (px *proxifier) Reaches(hostportOrIPPortCsv string) bool {
 // RegisterWarp implements x.Rpn.
 func (px *proxifier) RegisterWarp(pub string) ([]byte, error) {
 	id, err := px.warpc.Make(pub, "")
+	px.lastWarpErr = err // may be nil
 	if err != nil {
 		log.E("proxy: warp: make for %s failed: %v", pub, err)
 		return nil, err
@@ -716,10 +722,18 @@ func (px *proxifier) RegisterWarp(pub string) ([]byte, error) {
 
 // RegisterSE implements x.Rpn.
 func (px *proxifier) RegisterSE() error {
-	if sep, err := NewSEasyProxy(px.ctx, px.ctl, px.exit); err != nil {
+	sec := px.sec
+	if sec == nil {
+		return px.lastSeErr
+	}
+
+	sep, err := NewSEasyProxy(px.ctx, px.ctl, sec)
+	px.lastSeErr = err // err may be nil, which unsets lastSeErr
+
+	if err != nil {
 		log.E("proxy: se: make failed: %v", err)
 		return err
-	} else if !px.add(sep) {
+	} else if !px.add(sep) { // unlikely
 		return errAddProxy
 	}
 	return nil
@@ -727,7 +741,11 @@ func (px *proxifier) RegisterSE() error {
 
 // Warp implements x.Rpn.
 func (px *proxifier) Warp() (x.Proxy, error) {
-	return px.ProxyFor(RpnWg)
+	warp, err := px.ProxyFor(RpnWg)
+	if err == nil && px.lastWarpErr != nil {
+		return nil, px.lastWarpErr
+	}
+	return warp, err
 }
 
 // Pip implements x.Rpn.
@@ -747,15 +765,45 @@ func (px *proxifier) Exit64() (x.Proxy, error) {
 
 // SE implements x.Rpn.
 func (px *proxifier) SE() (x.Proxy, error) {
-	return px.ProxyFor(RpnSE)
+	sep, err := px.ProxyFor(RpnWg)
+	if err == nil && px.lastWarpErr != nil {
+		return nil, px.lastWarpErr
+	}
+	return sep, err
+}
+
+func (px *proxifier) TestSE() (string, error) {
+	sec := px.sec
+	if sec == nil {
+		return "", px.lastSeErr
+	}
+
+	const maxpings = 5
+	oks := make([]string, 0, maxpings)
+	for i, v := range shuffle(sec.Addrs()) {
+		if i > maxpings {
+			break
+		}
+		ippstr := v.String()
+		// base can route back into netstack (settings.LoopingBack)
+		// in which  case all endpoints will "seem" reachable.
+		// exit, however, never routes back into netstack and has
+		// the true, unhindered path to the underlying network.
+		if Reaches(px.exit, ippstr, "tcp") {
+			oks = append(oks, ippstr)
+		}
+	}
+
+	if len(oks) <= 0 {
+		return "", errors.Join(errNoSuitableAddress, px.lastSeErr)
+	}
+	return strings.Join(oks, ","), nil
 }
 
 func (px *proxifier) TestWarp() (string, error) {
 	const totalpings = 5
-	pingch := make(chan netip.AddrPort, totalpings*2)
-	// ips := make([]netip.AddrPort, 0)
-	wg := sync.WaitGroup{}
-	wg.Add(totalpings)
+
+	oks := make([]string, 0, totalpings*2)
 
 	for i := 0; i < totalpings; i++ {
 		v4, v6, err := warp.Endpoints()
@@ -763,61 +811,24 @@ func (px *proxifier) TestWarp() (string, error) {
 			log.W("proxy: warp: ping#%d: %v", i, err)
 			continue
 		}
-		core.Go("pxr.testwarp", func() {
-			defer wg.Done()
-
-			var c4, c6 protect.Conn
-			var err4, err6 error
-			// base can route back into netstack (settings.LoopingBack)
-			// in which  case all endpoints will "seem" reachable.
-			// exit, however, never routes back into netstack and has
-			// the true, unhindered path to the underlying network.
-			c4, err4 = px.exit.Dial("udp", v4.String())
-			c6, err6 = px.exit.Dial("udp", v6.String())
-			defer core.CloseConn(c4, c6)
-
-			// net.OpError => os.SyscallError => syscall.Errno
-			if syserr := new(os.SyscallError); errors.As(err4, &syserr) {
-				if syserr.Err == syscall.ECONNREFUSED {
-					err4 = nil
-				}
-			}
-			if syserr := new(os.SyscallError); errors.As(err6, &syserr) {
-				if syserr.Err == syscall.ECONNREFUSED {
-					err6 = nil
-				}
-			}
-			if err4 == nil {
-				pingch <- v4
-			}
-			if err6 == nil {
-				pingch <- v6
-			}
-		})
-	}
-
-	core.Go("pxr.testwarp.closer", func() {
-		defer close(pingch)
-		wg.Wait()
-	})
-
-	addrs := make([]string, 0, totalpings)
-	timeout := time.After(15 * time.Second)
-	i := 0
-	for ip := range pingch {
-		log.I("proxy: warp: ping#%d: %s ok", i, ip)
-		addrs = append(addrs, ip.String())
-		if closed(timeout) {
-			log.I("proxy: warp: ping#%d: timeout", i)
-			break
+		v4str := v4.String()
+		v6str := v6.String()
+		// base can route back into netstack (settings.LoopingBack)
+		// in which  case all endpoints will "seem" reachable.
+		// exit, however, never routes back into netstack and has
+		// the true, unhindered path to the underlying network.
+		if Reaches(px.exit, v4str, "udp") {
+			oks = append(oks, v4str)
 		}
-		i++
+		if Reaches(px.exit, v6str, "udp") {
+			oks = append(oks, v6str)
+		}
 	}
 
-	if len(addrs) <= 0 {
+	if len(oks) <= 0 {
 		return "", errNoSuitableAddress
 	}
-	return strings.Join(addrs, ","), nil
+	return strings.Join(oks, ","), nil
 }
 
 func isRPN(id string) bool {

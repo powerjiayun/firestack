@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"time"
 
 	se "github.com/Snawoot/opera-proxy/seclient"
@@ -85,17 +86,20 @@ CV4Ks2dH/hzg1cEo70qLRDEmBDeNiXQ2Lu+lIg+DdEmSx/cQwgwp+7e9un/jX9Wf
 )
 
 var (
-	// version       = "undefined"
-	refreshPeriod = 4 * time.Hour
-	defaultGeos   = []se.SEGeoEntry{
+	defaultGeos = []se.SEGeoEntry{
 		{CountryCode: "EU", Country: "Europe"},
 		{CountryCode: "AS", Country: "Asia"},
 		{CountryCode: "AM", Country: "Americas"},
 	}
 )
 
-func NewSEasyClient(ctx context.Context, exit protect.RDialer) (sec *se.SEClient, eps []se.SEIPEntry, err error) {
-	sec, err = se.NewSEClient(API_LOGIN, API_CRED, &http.Transport{
+type SEApi struct {
+	*se.SEClient
+	eps []se.SEIPEntry
+}
+
+func NewSEasyClient(exit protect.RDialer) (sec *SEApi, err error) {
+	c, err := se.NewSEClient(API_LOGIN, API_CRED, &http.Transport{
 		Dial:                  exit.Dial, // resolves addrs if needed
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          10,
@@ -103,13 +107,21 @@ func NewSEasyClient(ctx context.Context, exit protect.RDialer) (sec *se.SEClient
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify:     true, // custom validation
+			SessionTicketsDisabled: false,
+			ClientSessionCache:     core.TlsSessionCache(),
 		},
 	})
-	if err != nil {
-		return
+	if c != nil { // rare for c to be nil
+		return &SEApi{
+			SEClient: c,
+			eps:      make([]se.SEIPEntry, 0),
+		}, nil
 	}
+	return nil, err
+}
 
+func (sec *SEApi) Start(ctx context.Context) (ok bool, err error) {
 	if err = sec.AnonRegister(ctx); err != nil {
 		return
 	}
@@ -121,10 +133,13 @@ func NewSEasyClient(ctx context.Context, exit protect.RDialer) (sec *se.SEClient
 		geos = defaultGeos
 	}
 
-	eps = make([]se.SEIPEntry, 0)
 	for _, geo := range geos {
-		if ips, discoerr := sec.Discover(ctx, fmt.Sprintf("\"%s\",,", geo.CountryCode)); err == nil {
-			eps = append(eps, ips...)
+		if discovered, discoerr := sec.Discover(ctx, fmt.Sprintf("\"%s\",,", geo.CountryCode)); err == nil {
+			for _, ep := range discovered {
+				if !sec.hasEp(ep) {
+					sec.eps = append(sec.eps, ep)
+				}
+			}
 		} else {
 			err = errors.Join(err, discoerr)
 		}
@@ -133,21 +148,34 @@ func NewSEasyClient(ctx context.Context, exit protect.RDialer) (sec *se.SEClient
 		return
 	}
 
-	stopRefreshes := core.Every("se.refresh", refreshPeriod, func() { refresh(ctx, sec) })
-	context.AfterFunc(ctx, stopRefreshes)
-
-	return sec, eps, nil
+	return len(sec.eps) > 0, nil
 }
 
-func refresh(ctx context.Context, sec *se.SEClient) {
-	rctx, cl := context.WithTimeout(ctx, 30*time.Second)
-	defer cl()
-	err := sec.Login(rctx)
+func (sec *SEApi) Endpoints() []se.SEIPEntry {
+	return sec.eps
+}
+
+func (sec *SEApi) Addrs() []netip.AddrPort {
+	ipps := make([]netip.AddrPort, 0)
+	for _, ep := range sec.eps {
+		if ipp, err := netip.ParseAddrPort(ep.NetAddr()); err == nil {
+			ipps = append(ipps, ipp)
+		}
+	}
+	return ipps
+}
+
+func (sec *SEApi) Refresh() {
+	bg := context.Background()
+
+	ctx, done := context.WithTimeout(bg, 30*time.Second)
+	defer done()
+	err := sec.Login(ctx)
 	loged(err)("se: login refresh; err? %v", err)
 
-	rctx, cl = context.WithTimeout(ctx, 30*time.Second)
-	defer cl()
-	err = sec.DeviceGeneratePassword(rctx)
+	ctx, done = context.WithTimeout(bg, 30*time.Second)
+	defer done()
+	err = sec.DeviceGeneratePassword(ctx)
 	loged(err)("se: auth refresh; err? %v", err)
 
 	// todo: retry on error?
@@ -158,4 +186,13 @@ func loged(err error) log.LogFn {
 		return log.E
 	}
 	return log.D
+}
+
+func (sec *SEApi) hasEp(ep se.SEIPEntry) bool {
+	for _, v := range sec.eps { // sec.eps may be nil
+		if v.NetAddr() == ep.NetAddr() {
+			return true
+		}
+	}
+	return false
 }

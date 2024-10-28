@@ -139,12 +139,15 @@ func (pxr *proxifier) fromOpts(id string, opts *settings.ProxyOptions) (Proxy, e
 	return p, err
 }
 
-func Reaches(p Proxy, hostportOrIPPortCsv string) bool {
+func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 	if p == nil {
 		return false
 	}
 	if len(hostportOrIPPortCsv) <= 0 {
 		return true
+	}
+	if len(protos) <= 0 {
+		protos = []string{"tcp", "udp", "icmp"}
 	}
 	// upstream := dnsx.Default
 	// if pdns := p.DNS(); len(pdns) > 0 {
@@ -173,10 +176,16 @@ func Reaches(p Proxy, hostportOrIPPortCsv string) bool {
 	}
 	tests := make([]core.WorkCtx[bool], 0)
 	for _, ipp := range ipps {
-		tests = append(tests,
-			tcpReachesWorkCtx(p, ipp.String()),
-			icmpReachesWorkCtx(p, ipp),
-		)
+		ippstr := ipp.String()
+		if has(protos, "tcp") || has(protos, "tcp4") || has(protos, "tcp6") {
+			tests = append(tests, tcpReachesWorkCtx(p, ippstr))
+		}
+		if has(protos, "udp") || has(protos, "udp4") || has(protos, "udp6") {
+			tests = append(tests, udpReachesWorkCtx(p, ippstr))
+		}
+		if has(protos, "icmp") || has(protos, "icmp4") || has(protos, "icmp6") {
+			tests = append(tests, icmpReachesWorkCtx(p, ipp))
+		}
 	}
 
 	if len(tests) <= 0 {
@@ -215,6 +224,33 @@ func tcpReaches(p Proxy, ippstr string) (bool, error) {
 
 	rtt := time.Since(start)
 	ok := err == nil
+	// net.OpError => os.SyscallError => syscall.Errno
+	if syserr := new(os.SyscallError); errors.As(err, &syserr) {
+		ok = ok || syserr.Err == syscall.ECONNREFUSED
+	}
+
+	log.V("proxy: %s reaches: tcp: %s ok? %t, rtt: %s; err: %v",
+		p.ID(), ippstr, ok, rtt, err)
+	if ok { // wipe out err as it makes core.Race discard "ok"
+		err = nil
+	}
+	return ok, err
+}
+
+func udpReachesWorkCtx(p Proxy, ippstr string) core.WorkCtx[bool] {
+	return func(_ context.Context) (bool, error) {
+		return udpReaches(p, ippstr)
+	}
+}
+
+func udpReaches(p Proxy, ippstr string) (bool, error) {
+	start := time.Now()
+	c, err := p.Dial("udp", ippstr)
+	defer core.CloseConn(c)
+
+	rtt := time.Since(start)
+	ok := err == nil
+	// net.OpError => os.SyscallError => syscall.Errno
 	if syserr := new(os.SyscallError); errors.As(err, &syserr) {
 		ok = ok || syserr.Err == syscall.ECONNREFUSED
 	}
@@ -257,6 +293,7 @@ func icmpReaches(p Proxy, ipp netip.AddrPort) (bool, error) {
 
 	ok, rtt, err := core.Ping(c, ipp)
 
+	// net.OpError => os.SyscallError => syscall.Errno
 	if syserr := new(os.SyscallError); errors.As(err, &syserr) {
 		ok = ok || syserr.Err == syscall.ECONNREFUSED
 	}
@@ -298,4 +335,13 @@ func healthy(p Proxy) error {
 	} // else: no stats; nothing to do
 
 	return nil // ok
+}
+
+func has[T comparable](pids []T, pid T) bool {
+	for _, v := range pids {
+		if v == pid {
+			return true
+		}
+	}
+	return false
 }

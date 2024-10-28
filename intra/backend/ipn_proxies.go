@@ -54,6 +54,8 @@ type Rpn interface {
 	RegisterSE() error
 	// TestWarp pings random Warp endpoints and returns reachable ones.
 	TestWarp() (ips string, errs error)
+	// TestSE pings random SurfEasy endpoints and returns reachable ones.
+	TestSE() (ips string, errs error)
 	// Warp returns a RpnWg proxy.
 	Warp() (wg Proxy, err error)
 	// Pip returns a RpnWs proxy.
