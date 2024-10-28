@@ -34,6 +34,8 @@ type GBaseConnHandler interface {
 type GSpecConnHandler[T gconns] interface {
 	GBaseConnHandler
 	// Proxy copies data between conn and dst (egress).
+	// must not block forever as it may block netstack
+	// see: netstack/dispatcher.go:newReadvDispatcher
 	Proxy(in T, src, dst netip.AddrPort) bool
 	// ReverseProxy copies data between conn and dst (ingress).
 	ReverseProxy(out T, in net.Conn, src, dst netip.AddrPort) bool
