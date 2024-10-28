@@ -45,7 +45,7 @@ func NewICMPHandler(pctx context.Context, resolver dnsx.Resolver, prox ipn.Proxi
 	return h
 }
 
-// Ping implements netstack.GICMPHandler.
+// Ping implements netstack.GICMPHandler. Takes ownership of msg.
 // Nb: to send icmp pings, root access is required; and so,
 // send "unprivileged" icmp pings via udp reqs; which do
 // work on Vanilla Android, because ping_group_range is
@@ -104,40 +104,26 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 	defer core.Close(uc)
 	ucnil := uc == nil || core.IsNil(uc)
 
-	smm.Target = dst.Addr().String()
 	smm.PID = px.ID()
 
-	if err != nil || ucnil { // nilaway: tx.socks5 returns nil conn even if err == nil
+	// nilaway: tx.socks5 returns nil conn even if err == nil
+	if err != nil || ucnil {
 		if err == nil {
 			err = unix.ENETUNREACH
 		}
-		log.E("t.icmp: egress: dial(%s); hasConn? %s(%t); err %v", dst, pids, !ucnil, err)
+		log.E("t.icmp: egress: dial(%s); hasConn? %s(%t); err %v",
+			dst, pids, !ucnil, err)
 		return false // unhandled
 	}
 
 	h.conntracker.Track(cid, uc)
 	defer h.conntracker.Untrack(cid)
 
-	extend(uc, icmptimeout)
 	// todo: construct ICMP header? github.com/prometheus-community/pro-bing/blob/0bacb2d5e7/ping.go#L717
-	tx, err = uc.WriteTo(msg, net.UDPAddrFromAddrPort(dst))
-	logei(err)("t.icmp: egress: write(%v <= %v) ping; done %d; err? %v", dst, source, len(msg), err)
-	if err != nil {
-		return false // write error
-	}
-
-	bptr := core.Alloc()
-	b := *bptr
-	b = b[:cap(b)]
-	defer func() {
-		*bptr = b
-		core.Recycle(bptr)
-	}()
-
-	extend(uc, icmptimeout)
-	rx, from, err := uc.ReadFrom(b) // todo: assert from == dst
+	reply, from := core.Echo(uc, msg, net.UDPAddrFromAddrPort(dst), target.Addr().Is4())
 	// todo: ignore non-ICMP replies in b: github.com/prometheus-community/pro-bing/blob/0bacb2d5e7/ping.go#L630
-	logei(err)("t.icmp: ingress: read(%v <= %v / %v) ping done; err? %v", source, from, dst, err)
+	log.D("t.icmp: ingress: read(%v <= %v / %v) ping done %d; err? %v",
+		source, from, dst, len(reply), err)
 
 	return true // echoed; even if err != nil
 }
