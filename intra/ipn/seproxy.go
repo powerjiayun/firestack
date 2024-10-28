@@ -85,12 +85,7 @@ type sedialer struct {
 var _ Proxy = (*seproxy)(nil)
 var _ proxy.Dialer = (*sedialer)(nil)
 
-func newSEasy(ctx context.Context, c protect.Controller, pxr Proxies) (*seproxy, error) {
-	exit, exerr := pxr.ProxyFor(Exit)
-	if exerr != nil { // unlikely
-		return nil, exerr
-	}
-
+func NewSEasyProxy(ctx context.Context, c protect.Controller, exit Proxy) (*seproxy, error) {
 	sec, endpoints, err := seasy.NewSEasyClient(ctx, exit)
 	if err != nil {
 		return nil, err
@@ -225,11 +220,9 @@ func (sed *sedialer) tlsVerify(cs tls.ConnectionState) error {
 	for _, cert := range cs.PeerCertificates[1:] {
 		// add all peer certs except the leaf
 		opts.Intermediates.AddCert(cert)
-		if sed.cert != nil {
-			// add missing cert if it's not already in the chain
-			if !linkNeeded && bytes.Compare(cert.AuthorityKeyId, sed.cert.SubjectKeyId) == 0 {
-				linkNeeded = true
-			}
+		// add missing cert if it is not already in the chain
+		if sed.cert != nil && !linkNeeded {
+			linkNeeded = bytes.Equal(cert.AuthorityKeyId, sed.cert.SubjectKeyId)
 		}
 	}
 	// add missing cert if it's needed in the chain

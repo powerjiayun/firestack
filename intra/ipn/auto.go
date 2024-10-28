@@ -22,7 +22,7 @@ import (
 )
 
 const ttl30s = 30 * time.Second
-const shortdelay = 200 * time.Millisecond
+const shortdelay = 100 * time.Millisecond
 
 // exit is a proxy that always dials out to the internet.
 type auto struct {
@@ -30,14 +30,15 @@ type auto struct {
 	nop.ProtoAgnostic
 	nop.SkipRefresh
 	nop.GW
-	pxr    Proxies
-	addr   string
+	pxr  Proxies
+	addr string
+
 	exp    *core.Sieve[string, int]
 	ba     *core.Barrier[bool, string]
 	status *core.Volatile[int]
 }
 
-// NewExitProxy returns a new exit proxy.
+// NewAutoProxy returns a new exit proxy.
 func NewAutoProxy(ctx context.Context, pxr Proxies) *auto {
 	h := &auto{
 		pxr:    pxr,
@@ -72,6 +73,7 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 	exit, exerr := h.pxr.ProxyFor(Exit)
 	warp, waerr := h.pxr.ProxyFor(RpnWg)
 	exit64, ex64err := h.pxr.ProxyFor(Rpn64)
+	sep, seerr := h.pxr.ProxyFor(RpnSE)
 
 	previdx, recent := h.exp.Get(remote)
 
@@ -107,7 +109,7 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(shortdelay):
+			case <-time.After(shortdelay): // 100ms
 			}
 			return h.dialIfHealthy(warp, network, local, remote)
 		}, func(ctx context.Context) (protect.Conn, error) {
@@ -126,9 +128,28 @@ func (h *auto) dial(network, local, remote string) (protect.Conn, error) {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(shortdelay):
+			case <-time.After(shortdelay * 2): // 200ms
 			}
 			return h.dialIfHealthy(exit64, network, local, remote)
+		}, func(ctx context.Context) (protect.Conn, error) {
+			const myidx = 3
+			if sep == nil {
+				return nil, seerr
+			}
+			if recent {
+				if previdx != myidx {
+					return nil, errNotPinned
+				}
+				// ip pinned to this proxy
+				return h.dialIfHealthy(sep, network, local, remote)
+			}
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(shortdelay * 3): // 300ms
+			}
+			return h.dialIfHealthy(sep, network, local, remote)
 		},
 	)
 
@@ -172,7 +193,7 @@ func (h *auto) Announce(network, local string) (protect.PacketConn, error) {
 			case <-time.After(shortdelay):
 			}
 			return warp.Dialer().Announce(network, local)
-		},
+		}, // seasy-proxy does not support udp?
 	)
 	defer localDialStatus(h.status, err)
 

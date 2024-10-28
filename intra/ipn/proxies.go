@@ -167,6 +167,7 @@ var _ x.Router = (*proxifier)(nil)
 var _ protect.RDialer = (Proxy)(nil)
 var _ Proxy = (*nop.NoProxy)(nil)
 
+// NewProxifier returns a new Proxifier instance.
 func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener) *proxifier {
 	if c == nil || o == nil {
 		return nil
@@ -193,7 +194,8 @@ func NewProxifier(pctx context.Context, c protect.Controller, o x.ProxyListener)
 	pxr.add(pxr.exit64)   // fixed
 	pxr.add(pxr.base)     // fixed
 	pxr.add(pxr.grounded) // fixed
-	pxr.add(pxr.auto)
+	pxr.add(pxr.auto)     // fixed
+
 	log.I("proxy: new")
 
 	context.AfterFunc(pctx, pxr.stopProxies)
@@ -705,7 +707,18 @@ func (px *proxifier) RegisterWarp(pub string) ([]byte, error) {
 	return id.Json()
 }
 
-// Warp Implements x.Rpn.
+// RegisterSE implements x.Rpn.
+func (px *proxifier) RegisterSE() error {
+	if sep, err := NewSEasyProxy(px.ctx, px.ctl, px.exit); err != nil {
+		log.E("proxy: se: make failed: %v", err)
+		return err
+	} else if !px.add(sep) {
+		return errAddProxy
+	}
+	return nil
+}
+
+// Warp implements x.Rpn.
 func (px *proxifier) Warp() (x.Proxy, error) {
 	return px.ProxyFor(RpnWg)
 }
@@ -723,6 +736,11 @@ func (px *proxifier) Exit() (x.Proxy, error) {
 // Exit64 Implements x.Rpn.
 func (px *proxifier) Exit64() (x.Proxy, error) {
 	return px.ProxyFor(Rpn64)
+}
+
+// SE implements x.Rpn.
+func (px *proxifier) SE() (x.Proxy, error) {
+	return px.ProxyFor(RpnSE)
 }
 
 func (px *proxifier) TestWarp() (string, error) {

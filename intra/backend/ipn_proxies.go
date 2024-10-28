@@ -50,6 +50,8 @@ const ( // see ipn/proxies.go
 type Rpn interface {
 	// RegisterWarp registers a new Warp public key.
 	RegisterWarp(publicKeyBase64 string) (json []byte, err error)
+	// RegisterSE registers a new SurfEasy user.
+	RegisterSE() error
 	// TestWarp pings random Warp endpoints and returns reachable ones.
 	TestWarp() (ips string, errs error)
 	// Warp returns a RpnWg proxy.
@@ -60,6 +62,8 @@ type Rpn interface {
 	Exit() (exit Proxy, err error)
 	// Exit64 returns a Exit proxy hopping over NAT64.
 	Exit64() (nat64 Proxy, err error)
+	// SE returns a SurfEasy proxy.
+	SE() (se Proxy, err error)
 }
 
 type Proxy interface {
