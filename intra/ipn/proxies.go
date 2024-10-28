@@ -462,10 +462,12 @@ func (px *proxifier) GetProxy(id string) (x.Proxy, error) {
 	return px.ProxyFor(id)
 }
 
+// Router implements x.Proxy.
 func (px *proxifier) Router() x.Router {
 	return px
 }
 
+// Rpn implements x.Proxies.
 func (px *proxifier) Rpn() x.Rpn {
 	return px
 }
@@ -489,6 +491,7 @@ func (px *proxifier) stopProxies() {
 	log.I("proxy: all(%d) stopped and removed", l)
 }
 
+// RefreshProxies implements x.Proxies.
 func (px *proxifier) RefreshProxies() (string, error) {
 	ptot, ptotu := px.clearpins()
 
@@ -518,6 +521,7 @@ func (px *proxifier) RefreshProxies() (string, error) {
 	return strings.Join(which, ","), nil
 }
 
+// LiveProxies implements x.Proxies.
 func (px *proxifier) LiveProxies() string {
 	px.RLock()
 	defer px.RUnlock()
@@ -529,6 +533,7 @@ func (px *proxifier) LiveProxies() string {
 	return strings.Join(out, ",")
 }
 
+// RefreshProto implements x.Proxies.
 func (px *proxifier) RefreshProto(l3 string) {
 	defer core.Recover(core.Exit11, "pxr.RefreshProto")
 	// must unlock from deferred since panics are recovered above
@@ -566,7 +571,7 @@ func (px *proxifier) Reverser(rhdl netstack.GConnHandler) error {
 	return nil
 }
 
-// Implements Router.
+// IP4 implements x.Router.
 func (px *proxifier) IP4() bool {
 	px.RLock()
 	defer px.RUnlock()
@@ -582,7 +587,7 @@ func (px *proxifier) IP4() bool {
 	return len(px.p) > 0
 }
 
-// Implements Router.
+// IP6 implements x.Router.
 func (px *proxifier) IP6() bool {
 	px.RLock()
 	defer px.RUnlock()
@@ -599,6 +604,7 @@ func (px *proxifier) IP6() bool {
 	return len(px.p) > 0
 }
 
+// MTU implements x.Router.
 func (px *proxifier) MTU() (out int, err error) {
 	px.RLock()
 	defer px.RUnlock()
@@ -626,7 +632,7 @@ func (px *proxifier) MTU() (out int, err error) {
 	return out, err
 }
 
-// Implements Router.
+// Stat implements x.Router.
 func (px *proxifier) Stat() *x.RouterStats {
 	px.RLock()
 	defer px.RUnlock()
@@ -665,7 +671,7 @@ func accStats(a, b *x.RouterStats) (c *x.RouterStats) {
 	return
 }
 
-// Implements Router.
+// Contains implements x.Router.
 func (px *proxifier) Contains(ipprefix string) bool {
 	px.RLock()
 	defer px.RUnlock()
@@ -683,6 +689,7 @@ func (px *proxifier) Contains(ipprefix string) bool {
 	return false
 }
 
+// Reaches implements x.Router.
 func (px *proxifier) Reaches(hostportOrIPPortCsv string) bool {
 	px.RLock()
 	defer px.RUnlock()
@@ -695,7 +702,7 @@ func (px *proxifier) Reaches(hostportOrIPPortCsv string) bool {
 	return false
 }
 
-// Implements x.Rpn.
+// RegisterWarp implements x.Rpn.
 func (px *proxifier) RegisterWarp(pub string) ([]byte, error) {
 	id, err := px.warpc.Make(pub, "")
 	if err != nil {
@@ -723,17 +730,17 @@ func (px *proxifier) Warp() (x.Proxy, error) {
 	return px.ProxyFor(RpnWg)
 }
 
-// Pip Implements x.Rpn.
+// Pip implements x.Rpn.
 func (px *proxifier) Pip() (x.Proxy, error) {
 	return px.ProxyFor(RpnWs)
 }
 
-// Exit Implements x.Rpn.
+// Exit implements x.Rpn.
 func (px *proxifier) Exit() (x.Proxy, error) {
 	return px.ProxyFor(Exit)
 }
 
-// Exit64 Implements x.Rpn.
+// Exit64 implements x.Rpn.
 func (px *proxifier) Exit64() (x.Proxy, error) {
 	return px.ProxyFor(Rpn64)
 }
