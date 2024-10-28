@@ -826,7 +826,7 @@ func (px *proxifier) TestWarp() (string, error) {
 	}
 
 	if len(oks) <= 0 {
-		return "", errNoSuitableAddress
+		return "", errors.Join(errNoSuitableAddress, px.lastWarpErr)
 	}
 	return strings.Join(oks, ","), nil
 }
