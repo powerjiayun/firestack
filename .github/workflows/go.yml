@@ -47,6 +47,8 @@ jobs:
         # staticcheck ./...
         go install go.uber.org/nilaway/cmd/nilaway@latest
         nilaway ./...
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck -test ./...
       shell: bash
 
     - name: 🐍 Python3
@@ -155,9 +157,9 @@ jobs:
       # github.com/tailscale/tailscale/blob/93324cc7b/.github/workflows/depaware.yml
       # consolidated in: github.com/tailscale/tailscale/commit/4022796484
       - name: 📦 Depaware
-        run: go run github.com/tailscale/depaware --check
-          github.com/celzero/firestack/intra
-          github.com/celzero/firestack/tunnel
+        run: |
+          go run github.com/tailscale/depaware --check github.com/celzero/firestack/intra
+          go run github.com/tailscale/depaware --check github.com/celzero/firestack/tunnel
       - name: 🏅 Lint
         uses: golangci/golangci-lint-action@v3.7.0
         with:
