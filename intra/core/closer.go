@@ -218,3 +218,12 @@ func IsZero(x any) bool {
 	// panics if x == nil: go.dev/play/p/jcJzdHF0JCq
 	return v.IsZero()
 }
+
+func OneErr(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

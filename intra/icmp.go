@@ -108,9 +108,7 @@ func (h *icmpHandler) Ping(msg []byte, source, target netip.AddrPort) (echoed bo
 
 	// nilaway: tx.socks5 returns nil conn even if err == nil
 	if err != nil || ucnil {
-		if err == nil {
-			err = unix.ENETUNREACH
-		}
+		err = core.OneErr(err, unix.ENETUNREACH)
 		log.E("t.icmp: egress: dial(%s); hasConn? %s(%t); err %v",
 			dst, pids, !ucnil, err)
 		return false // unhandled
