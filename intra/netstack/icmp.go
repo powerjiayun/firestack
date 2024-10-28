@@ -22,6 +22,7 @@ type GICMPHandler interface {
 }
 
 type icmpForwarder struct {
+	s  *stack.Stack
 	ep stack.LinkEndpoint
 	h  GICMPHandler
 }
@@ -37,13 +38,13 @@ func OutboundICMP(s *stack.Stack, ep stack.LinkEndpoint, hdl GICMPHandler) {
 		return
 	}
 
-	forwarder := newIcmpForwarder(ep, hdl)
+	forwarder := newIcmpForwarder(s, ep, hdl)
 	s.SetTransportProtocolHandler(icmp.ProtocolNumber4, forwarder.reply4)
 	s.SetTransportProtocolHandler(icmp.ProtocolNumber6, forwarder.reply6)
 }
 
-func newIcmpForwarder(ep stack.LinkEndpoint, h GICMPHandler) *icmpForwarder {
-	return &icmpForwarder{ep, h}
+func newIcmpForwarder(s *stack.Stack, ep stack.LinkEndpoint, h GICMPHandler) *icmpForwarder {
+	return &icmpForwarder{s, ep, h}
 }
 
 // sendICMP: github.com/google/gvisor/blob/8035cf9ed/pkg/tcpip/transport/tcp/testing/context/context.go#L404
@@ -83,10 +84,19 @@ func (f *icmpForwarder) reply4(id stack.TransportEndpointID, pkt *stack.PacketBu
 
 	log.D("icmp: v4: type %v/%v sz [%v]; src(%v) => dst(%v)", hdr.Type(), hdr.Code(), len(data), src, dst)
 
+	l3 := pkt.Network()
+	route, err := f.s.FindRoute(pkt.NICID, l3.DestinationAddress(), l3.SourceAddress(), pkt.NetworkProtocolNumber, false /* multicastLoop */)
+	if err != nil {
+		return false // not handled
+	}
+
 	// always forward in a goroutine to avoid blocking netstack
 	// see: netstack/dispatcher.go:newReadvDispatcher
 	pkt.IncRef()
+
 	core.Go("icmp4.pinger", func() {
+		defer route.Release()
+
 		if !f.h.Ping(data, src, dst) { // unreachable
 			defer pkt.DecRef()
 			// make unreachable icmp packet for req and l7
