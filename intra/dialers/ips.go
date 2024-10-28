@@ -29,7 +29,8 @@ const (
 
 var ipm ipmap.IPMap = ipmap.NewIPMap()
 
-// Resolves hostOrIP, and re-seeds it if existing is non-empty
+// Resolves hostOrIP, and re-seeds it if existing is non-empty.
+// hostOrIP may be host:port, or ip:port, or host, or ip.
 func renew(hostOrIP string, existing *ipmap.IPSet) (cur *ipmap.IPSet, ok bool) {
 	// will never be able to resolve protected hosts (UidSelf, UidRethink),
 	// and so, keep existing as-is (we do not want to use NewProtected and
@@ -64,12 +65,15 @@ func renew(hostOrIP string, existing *ipmap.IPSet) (cur *ipmap.IPSet, ok bool) {
 	return cur, !cur.Empty()
 }
 
-// New re-seeds hostOrIP with a new set of ips or ip:ports.
+// New re-seeds hostOrIP with a new set of ips.
+// hostOrIP may be host:port, or ip:port, or host, or ip.
+// ipps may be ip or ip:port.
 func New(hostOrIP string, ipps []string) (*ipmap.IPSet, bool) {
 	ips := ipm.MakeIPSet(hostOrIP, ipps, ipmap.AutoType)
 	return ips, !ips.Empty()
 }
 
+// hostOrIP may be host:port, or ip:port, or host, or ip.
 func NewProtected(hostOrIP string, ipps []string) (*ipmap.IPSet, bool) {
 	ips := ipm.MakeIPSet(hostOrIP, ipps, ipmap.Protected)
 	return ips, !ips.Empty()
@@ -78,6 +82,7 @@ func NewProtected(hostOrIP string, ipps []string) (*ipmap.IPSet, bool) {
 // For returns addresses for hostOrIP from cache, resolving them if missing.
 // Underlying cache relies on Disconfirm() to remove unreachable IP addrs;
 // if not called, these entries may go stale. Use Resolve() to bypass cache.
+// hostOrIP may be host:port, or ip:port, or host, or ip.
 func For(hostOrIP string) []netip.Addr {
 	ipset := ipm.Get(hostOrIP)
 	if ipset != nil {

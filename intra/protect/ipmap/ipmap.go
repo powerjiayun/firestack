@@ -78,17 +78,21 @@ type IPMapper interface {
 // IPMap maps hostnames to IPSets.
 type IPMap interface {
 	IPMapper
-	// Resolves hostname and adds the resulting IPs to its IPSet.
+	// Resolves hostOrIP and adds the resulting IPs to its IPSet.
+	// hostOrIP may be host:port, or ip:port, or host, or ip.
 	Add(hostOrIP string) *IPSet
 	// Get creates an IPSet for this hostname populated with the IPs
 	// discovered by resolving it. Subsequent calls to Get return the
 	// same IPSet. Never returns nil.
+	// hostOrIP may be host:port, or ip:port, or host, or ip.
 	Get(hostOrIP string) *IPSet
 	// GetAny creates an IPSet for this hostname, which may be empty.
 	// Subsequent calls to GetAny return the same IPSet. Never returns nil.
+	// hostOrIP may be host:port, or ip:port, or host, or ip.
 	GetAny(hostOrIP string) *IPSet
 	// MakeIPSet creates an IPSet for this hostname bootstrapped with given IPs
 	// or IP:Ports. Subsequent calls to MakeIPSet return a new, overridden IPSet.
+	// hostOrIP may be host:port, or ip:port, or host, or ip.
 	MakeIPSet(hostOrIP string, ipps []string, typ IPSetType) *IPSet
 	// With sets the default resolver to use for hostname resolution.
 	With(r IPMapper)
