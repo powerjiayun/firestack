@@ -102,7 +102,7 @@ func NewSEasyProxy(ctx context.Context, c protect.Controller, exit Proxy) (*sepr
 	missingcert, _ := x509.ParseCertificate(der.Bytes)
 
 	now := time.Now()
-	if missingcert.NotAfter.Before(now) {
+	if missingcert != nil && missingcert.NotAfter.Before(now) {
 		log.E("proxy: se: missing cert expired on %s (today: %s)",
 			missingcert.NotAfter, now)
 		missingcert = nil
