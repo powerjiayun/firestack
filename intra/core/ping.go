@@ -11,7 +11,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"net"
 	"net/netip"
 	"time"
@@ -56,7 +56,7 @@ func Ping(c net.PacketConn, ipp netip.AddrPort) (ok bool, rtt time.Duration, err
 	if err != nil {
 		return
 	}
-	msgid := mrand.Intn(65535)
+	msgid := mrand.IntN(65535)
 	msg := &icmp.Message{
 		Type: typ,
 		Code: 0,
