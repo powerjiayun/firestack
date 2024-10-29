@@ -119,7 +119,7 @@ func NewSEasyProxy(ctx context.Context, c protect.Controller, sec *seasy.SEApi) 
 
 	now := time.Now()
 	if missingcert != nil && missingcert.NotAfter.Before(now) {
-		log.E("proxy: se: missing cert expired on %s (today: %s)",
+		log.E("proxy: se: missing cert expired on %s (wall: %s)",
 			missingcert.NotAfter, now)
 		missingcert = nil
 	}
@@ -169,7 +169,7 @@ func (sed *sedialer) Dial(network, dest string) (conn net.Conn, err error) {
 	}()
 
 	if err != nil {
-		log.E("se: %s err outbound: %v", sed.addr, err)
+		log.E("se: %s => %s err outbound: %v", sed.addr, dest, err)
 		return conn, err
 	}
 
@@ -206,9 +206,8 @@ func (sed *sedialer) Dial(network, dest string) (conn net.Conn, err error) {
 		return conn, err
 	}
 
-	res, err := readPartial(conn, req)
-	if err != nil {
-		log.E("se: %s err reading res: %v", sed.addr, err)
+	if err != nil || res == nil {
+		log.E("se: %s => %s err reading res: %v", sed.addr, dest, core.OneErr(err, errNoProxyResponse))
 		return conn, err
 	}
 
@@ -217,7 +216,7 @@ func (sed *sedialer) Dial(network, dest string) (conn net.Conn, err error) {
 			res.Header.Get("X-Hola-Error") == "Forbidden Host" {
 			return conn, errSEProxyBlocks
 		}
-		log.E("se: %s bad proxy response: %s", sed.addr, res.Status)
+		log.E("se: %s bad proxy response: %s => %s", sed.addr, dest, res.Status)
 		return conn, errSEProxyResponse
 	}
 
