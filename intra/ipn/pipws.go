@@ -130,9 +130,7 @@ func (t *pipws) wsconn(rurl, msg string) (c net.Conn, res *http.Response, err er
 	}
 	if err != nil || ws == nil || res == nil {
 		closeWs(ws, "dial err")
-		if err == nil {
-			err = errNoProxyConn
-		}
+		err = core.OneErr(err, errNoProxyConn)
 		log.E("pipws: dialing %s (ws? %t, hres? %t); err: %v\n",
 			rurl, ws == nil, res == nil, err)
 		return

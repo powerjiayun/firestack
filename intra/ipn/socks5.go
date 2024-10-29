@@ -193,7 +193,7 @@ func (h *socks5) dial(network, _, remote string) (c protect.Conn, err error) {
 				h.ID(), network, h.GetAddr(), remote)
 			core.CloseConn(c)
 			c = nil
-			err = errNoProxyConn
+			err = core.OneErr(err, errNoProxyConn)
 		}
 	} else {
 		log.W("proxy: socks5: %s dial(%s) failed %s => %s: %v",

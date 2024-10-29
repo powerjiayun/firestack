@@ -220,8 +220,8 @@ func (r *retrier) dialLocked() (c core.DuplexConn, err error) {
 
 	begin := time.Now()
 	c, err = r.doDialLocked(strat)
-	if err == nil && c == nil {
-		err = errNoConn
+	if c == nil {
+		err = core.OneErr(err, errNoConn)
 	}
 
 	rtt := time.Since(begin)
@@ -336,8 +336,8 @@ func (r *retrier) Read(buf []byte) (n int, err error) {
 				r.retryCount++
 				n, err = r.retryWriteReadLocked(buf)
 				c = r.conn // re-assign c to newConn, if any; may be nil
-				if err == nil && c == nil {
-					err = errNoConn
+				if c == nil {
+					err = core.OneErr(err, errNoConn)
 				}
 				logeor(err, log.I)("retrier: read# %d: [%s<=%s] %d; err? %v",
 					r.retryCount, laddr(c), r.raddr, n, err)

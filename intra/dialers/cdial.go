@@ -98,8 +98,8 @@ func commondial2[D rdials, C rconns](d D, network, laddr, raddr string, connect 
 		log.V("commondial: dialing confirmed ip %s for %s", confirmed, remote)
 		conn, err = connect(d, network, local, remote)
 		// nilaway: tx.socks5 returns nil conn even if err == nil
-		if conn == nil && err == nil {
-			err = errNoConn
+		if conn == nil {
+			err = core.OneErr(err, errNoConn)
 		}
 		if err == nil {
 			log.V("commondial: ip %s works for %s", confirmed, remote)
@@ -142,8 +142,8 @@ func commondial2[D rdials, C rconns](d D, network, laddr, raddr string, connect 
 			remote := netip.AddrPortFrom(ip, uint16(port))
 			conn, err = connect(d, network, local, remote)
 			// nilaway: tx.socks5 returns nil conn even if err == nil
-			if conn == nil && err == nil {
-				err = errNoConn
+			if conn == nil {
+				err = core.OneErr(err, errNoConn)
 			}
 			if err == nil {
 				confirm(ips, ip)

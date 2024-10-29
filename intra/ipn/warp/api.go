@@ -75,9 +75,7 @@ func (w *Client) GetAcct(tok, deviceID string) (IdentityAccount, error) {
 
 	resp, err := w.c.Do(req)
 	if err != nil || resp == nil {
-		if err == nil {
-			err = errNoApiResponse
-		}
+		err = core.OneErr(err, errNoApiResponse)
 		return IdentityAccount{}, err
 	}
 	defer core.Close(resp.Body)
@@ -88,9 +86,7 @@ func (w *Client) GetAcct(tok, deviceID string) (IdentityAccount, error) {
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil || len(b) == 0 {
-		if err == nil {
-			err = errNoApiData
-		}
+		err = core.OneErr(err, errNoApiData)
 		return IdentityAccount{}, err
 	}
 
@@ -133,9 +129,7 @@ func (w *Client) reg(publicKey string) (Identity, error) {
 
 	resp, err := w.c.Do(req)
 	if err != nil || resp == nil {
-		if err == nil {
-			err = errNoApiResponse
-		}
+		err = core.OneErr(err, errNoApiResponse)
 		return Identity{}, err
 	}
 	defer core.Close(resp.Body)
@@ -146,9 +140,7 @@ func (w *Client) reg(publicKey string) (Identity, error) {
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil || len(b) == 0 {
-		if err == nil {
-			err = errNoApiData
-		}
+		err = core.OneErr(err, errNoApiData)
 		return Identity{}, err
 	}
 
@@ -176,9 +168,7 @@ func (w *Client) ResetLicense(authToken, deviceID string) (License, error) {
 
 	resp, err := w.c.Do(req)
 	if err != nil || resp == nil {
-		if err == nil {
-			err = errNoApiResponse
-		}
+		err = core.OneErr(err, errNoApiResponse)
 		return License{}, err
 	}
 	defer core.Close(resp.Body)
@@ -189,9 +179,7 @@ func (w *Client) ResetLicense(authToken, deviceID string) (License, error) {
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil || len(b) == 0 {
-		if err == nil {
-			err = errNoApiData
-		}
+		err = core.OneErr(err, errNoApiData)
 		return License{}, err
 	}
 
@@ -224,9 +212,7 @@ func (w *Client) UpdateAcct(authToken, deviceID, license string) (IdentityAccoun
 
 	resp, err := w.c.Do(req)
 	if err != nil || resp == nil {
-		if err == nil {
-			err = errNoApiResponse
-		}
+		err = core.OneErr(err, errNoApiResponse)
 		return IdentityAccount{}, err
 	}
 	defer core.Close(resp.Body)
@@ -237,9 +223,7 @@ func (w *Client) UpdateAcct(authToken, deviceID, license string) (IdentityAccoun
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil || len(b) == 0 {
-		if err == nil {
-			err = errNoApiData
-		}
+		err = core.OneErr(err, errNoApiData)
 		return IdentityAccount{}, err
 	}
 

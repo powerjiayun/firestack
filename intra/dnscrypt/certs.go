@@ -47,7 +47,10 @@ type dnsExchangeResponse struct {
 	err      error
 }
 
-var errCancelled = errors.New("cancelled")
+var (
+	errCancelled     = errors.New("dnscrypt: cancelled")
+	errFetchingCerts = errors.New("dnscrypt: cannot reach server to fetch certs")
+)
 
 func fetchCurrentDNSCryptCert(proxy *DcMulti, serverName *string, pk ed25519.PublicKey, serverAddress string, providerName string) (certinfo, error) {
 	if len(pk) != ed25519.PublicKeySize {
@@ -266,9 +269,7 @@ func dnsExchange(dialer *protect.RDial, query *dns.Msg, serverAddress string, se
 
 	log.I("dnscrypt: no cert, ignoring server: [%v] proto: [%v]", *serverName, proto)
 
-	if err == nil {
-		err = errors.New("unable to reach server to fetch certs")
-	}
+	err = core.OneErr(err, errFetchingCerts)
 
 	return nil, 0, err
 }

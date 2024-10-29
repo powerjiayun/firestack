@@ -175,9 +175,7 @@ func (tnet *wgtun) dial(network, local, remote string) (net.Conn, error) {
 		dialers.Disconfirm(host, raddr.Addr())
 		errs = errors.Join(errs, err)
 	}
-	if errs == nil {
-		errs = &net.OpError{Op: "dial", Err: errMissingAddress}
-	}
+	errs = core.OneErr(errs, errMissingAddress)
 	log.W("wg: dial: %s: %s failed: %v", network, addrs, errs)
 	return nil, errs
 }

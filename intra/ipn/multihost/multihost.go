@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/celzero/firestack/intra/core"
 	"github.com/celzero/firestack/intra/dialers"
 	"github.com/celzero/firestack/intra/log"
 )
@@ -198,9 +199,8 @@ func resolv(id string, domainsOrIps []string) ([]string, []netip.AddrPort) {
 				addrs = append(addrs, eps...)
 				log.V("multihost: %s resolved: %q => %s", id, dip, eps)
 			} else {
-				if err == nil { // err may be nil even on zero answers
-					err = errNoIps
-				}
+				// err may be nil even on zero answers
+				err = core.OneErr(err, errNoIps)
 				log.W("multihost: %s no ips for %q; err? %v", id, dip, err)
 			}
 		} else { // may be ip

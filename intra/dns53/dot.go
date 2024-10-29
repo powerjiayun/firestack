@@ -180,9 +180,7 @@ func (t *dot) tlsdial(rd protect.RDialer) (_ *dns.Conn, who uintptr, err error) 
 		// _ = c.SetDeadline(time.Now().Add(dottimeout * 2))
 		return &dns.Conn{Conn: c}, who, err
 	} else {
-		if err == nil {
-			err = errNoNet
-		}
+		err = core.OneErr(err, errNoNet)
 		log.W("dot: tlsdial: (%s) nil conn/err for %s, ech? %t; err? %v",
 			t.id, addr, usingech, err)
 	}

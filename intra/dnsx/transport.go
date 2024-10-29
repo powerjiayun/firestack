@@ -519,9 +519,8 @@ func (r *resolver) forward(q []byte, chosenids ...string) (res0 []byte, err0 err
 		return res2, err
 	}
 	if ans1 == nil {
-		if err == nil { // very unlikely that ans1 is nil but err is not
-			err = errNoAnswer
-		}
+		// very unlikely that ans1 is nil but err is not
+		err = core.OneErr(err, errNoAnswer)
 		if err != nil {
 			smm.Msg = err.Error()
 		}

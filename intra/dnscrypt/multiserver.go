@@ -98,9 +98,7 @@ func udpExchange(pid string, serverInfo *serverinfo, relayAddrs []*net.UDPAddr, 
 	pc, err := serverInfo.dialudp(pid, upstreamAddr)
 	pcnil := pc == nil || core.IsNil(pc)
 	if err != nil || pcnil { // nilaway: tx.socks5 returns nil conn even if err == nil
-		if err == nil {
-			err = errNoConn
-		}
+		err = core.OneErr(err, errNoConn)
 		log.E("dnscrypt: udp: dialing %s; hasConn? %s(%t); err: %v", serverInfo, pid, pcnil, err)
 		return
 	}
@@ -150,9 +148,7 @@ func tcpExchange(pid string, serverInfo *serverinfo, relayAddrs []*net.TCPAddr, 
 	pc, err := serverInfo.dialtcp(pid, upstreamAddr)
 	pcnil := pc == nil || core.IsNil(pc)
 	if err != nil || pcnil { // nilaway: tx.socks5 returns nil conn even if err == nil
-		if err == nil {
-			err = errNoConn
-		}
+		err = core.OneErr(err, errNoConn)
 		log.E("dnscrypt: tcp: dialing %s; hasConn? %s(%t); err: %v", serverInfo, pid, pcnil, err)
 		return
 	}

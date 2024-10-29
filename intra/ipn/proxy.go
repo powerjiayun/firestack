@@ -289,9 +289,7 @@ func icmpReaches(p Proxy, ipp netip.AddrPort) (bool, error) {
 	defer core.CloseConn(c)
 
 	if c == nil || err != nil {
-		if err == nil {
-			err = errNotUDPConn
-		}
+		err = core.OneErr(err, errNotUDPConn)
 		return false, err
 	}
 
