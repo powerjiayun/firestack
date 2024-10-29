@@ -76,7 +76,9 @@ type seproxy struct {
 	sec       *seasy.SEApi
 	addrs     []netip.AddrPort
 	outbounds []proxy.Dialer
-	status    *core.Volatile[int]
+
+	lastRefresh *core.Volatile[time.Time]
+	status      *core.Volatile[int]
 }
 
 type sedialer struct {
@@ -130,15 +132,13 @@ func NewSEasyProxy(ctx context.Context, c protect.Controller, sec *seasy.SEApi) 
 
 	log.I("proxy: se: started with %d endpoints %v", len(seds), endpoints)
 
-	stopRefreshes := core.Every("sep.refresh", fourHours, sec.Refresh)
-	context.AfterFunc(ctx, stopRefreshes)
-
 	return &seproxy{
-		done:      done,
-		sec:       sec,
-		addrs:     sec.Addrs(),
-		outbounds: seds,
-		status:    core.NewVolatile(TUP),
+		done:        done,
+		sec:         sec,
+		addrs:       sec.Addrs(),
+		outbounds:   seds,
+		lastRefresh: core.NewVolatile(now),
+		status:      core.NewVolatile(TUP),
 	}, nil
 }
 
@@ -254,6 +254,15 @@ func headerBasicAuth(u, pwd string) string {
 		[]byte(u+":"+pwd))
 }
 
+func (h *seproxy) maybeRefresh() {
+	now := time.Now()
+	if then := h.lastRefresh.Load(); now.Sub(then) > fourHours {
+		if h.lastRefresh.Cas(then, now) {
+			core.Go("se.refresh", h.sec.Refresh)
+		}
+	}
+}
+
 // Handle implements Proxy.
 func (h *seproxy) Handle() uintptr {
 	return core.Loc(h)
@@ -276,6 +285,8 @@ func (h *seproxy) Router() x.Router {
 
 // Dial implements Proxy.
 func (h *seproxy) Dial(network, addr string) (protect.Conn, error) {
+	defer h.maybeRefresh()
+
 	c, err := dialers.ProxyDials(h.outbounds, network, addr)
 	defer localDialStatus(h.status, err)
 
@@ -311,10 +322,12 @@ func (h *seproxy) GetAddr() string {
 	return h.addrs[n].String()
 }
 
+// Status implements Proxy.
 func (h *seproxy) Status() int {
 	return h.status.Load()
 }
 
+// Stop implements Proxy.
 func (h *seproxy) Stop() error {
 	h.status.Store(END)
 	h.done()
