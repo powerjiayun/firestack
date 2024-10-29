@@ -27,7 +27,7 @@ var errNotICMPEchoReply = errors.New("icmp: expecting echo reply")
 const (
 	padlen           = 0
 	ttl              = 64
-	timeout          = 1 * time.Second
+	timeout          = 3 * time.Second
 	protocolICMP     = 1
 	protocolIPv6ICMP = 58
 )
