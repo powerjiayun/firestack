@@ -210,11 +210,22 @@ func (h *exit64) Stop() error {
 func addr4to6(addr string) string {
 	// check if addr is an IPv4 address
 	ipport, err := netip.ParseAddrPort(addr)
-	if err != nil {
-		// todo: query? dialers.Resolve(addr)
-		log.W("proxy: auto: addr64: invalid addr(%s); err(%v)", addr, err)
-		return ""
+	if err != nil { // hostname?
+		resolved := dialers.For(addr)
+		logeif(len(resolved) == 0)("proxy: auto: addr64: is host? %s resolved? %v; err: %v",
+			addr, resolved, err)
+		for _, ip := range resolved {
+			if !ip.IsValid() || ip.Is6() {
+				continue
+			}
+			ipport = netip.AddrPortFrom(ip, ipport.Port())
+			break
+		}
+		if !ipport.IsValid() {
+			return ""
+		}
 	}
+
 	ip4 := ipport.Addr()
 	if !ip4.Is4() {
 		log.VV("proxy: auto: addr64: not IPv4(%s)", addr)
