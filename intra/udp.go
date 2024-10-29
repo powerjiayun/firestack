@@ -159,25 +159,24 @@ func (h *udpHandler) Proxy(gconn *netstack.GUDPConn, src, dst netip.AddrPort) (o
 
 // proxy connects src to dst over a proxy; thread-safe.
 func (h *udpHandler) proxy(gconn *netstack.GUDPConn, src, dst netip.AddrPort, dmx netstack.DemuxerFn) (ok bool) {
-	mux := dmx != nil
-	remote, smm, err := h.Connect(gconn, src, dst, dmx) // remote may be nil; smm is never nil
+	// remote, smm, err may all be nil
+	remote, smm, err := h.Connect(gconn, src, dst, dmx)
 
 	if err != nil {
-		core.Close(gconn, remote)
-		h.queueSummary(smm.done(err)) // smm may be nil
-		log.D("udp: proxy: mux? %t, firewalled? %s => %s; err: %v", mux, src, dst, err)
-		return // not ok
-	} else if remote == nil { // dnsOverride?
-		// no summary for dns queries
+		clos(gconn, remote)
+		// smm may be nil; in which case this is a no-op
+		h.queueSummary(smm.done(err))
+		return false // not ok
+	} else if remote == nil || smm == nil { // dnsOverride or ipn.Block
+		// do not close gconn here; it is either
+		// connected (overridden) or disconnected (blocked) already
+		// no summary for dns queries; for blocked connection,
+		// summary is queued in Connect()
 		return true // ok
 	}
 
-	var cid string
-	if smm != nil { // smm is never nil
-		cid = smm.ID
-	}
-
-	core.Go("udp.forward: "+cid, func() {
+	cid := smm.ID
+	core.Go("udp.forward."+cid, func() {
 		h.forward(gconn, rwext{remote}, smm)
 	})
 	return true // ok
@@ -203,6 +202,7 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	}
 
 	if !target.IsValid() { // must call h.Bind?
+		log.E("udp: connect: %s %s => %s; invalid dst", cid, src, target)
 		return nil, smm, errUdpUnconnected
 	}
 
@@ -213,10 +213,14 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 		} else {
 			err = errUdpFirewalled
 		}
-		secs := h.stall(fid)
-		log.I("udp: connect: %s conn firewalled from %s => %s (dom: %s / real: %s); stall? %ds for uid %s",
-			cid, src, target, domains, realips, secs, uid)
-		return nil, smm, err // disconnect
+		core.Go("udp.stall."+fid, func() {
+			defer clos(gconn)
+			defer h.queueSummary(smm.done(err))
+			secs := h.stall(fid)
+			log.I("udp: %s firewalled from %s => %s (dom: %s / real: %s) for %s; stall? %ds",
+				cid, src, target, domains, realips, uid, secs)
+		})
+		return nil, nil, nil // disconnect override, no dst
 	}
 
 	// connect gconn right away, since we assume a duplex-stream from here on
@@ -246,7 +250,7 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	if isAnyBasePid(pids) {
 		if h.dnsOverride(gconn, target) {
 			// SocketSummary is not sent to listener; x.DNSSummary is
-			return nil, smm, nil // connect, no dst
+			return nil, nil, nil // connect override, no dst
 		} // else: not a dns query or target is not a dns addr
 	} // else: proxy src to dst
 
@@ -317,7 +321,7 @@ func (h *udpHandler) Connect(gconn *netstack.GUDPConn, src, target netip.AddrPor
 	case net.Conn: // muxed
 		laddr = x.LocalAddr()
 	default:
-		core.Close(pc)
+		clos(pc)
 		log.E("udp: connect: %s proxy(%s) does not impl core.UDPConn(%s/%s); mux? %t, uid %s",
 			cid, px.ID(), target, selectedTarget, mux, uid)
 		return nil, smm, errUdpSetupConn // disconnect

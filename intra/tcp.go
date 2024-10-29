@@ -167,19 +167,18 @@ func (h *tcpHandler) Proxy(gconn *netstack.GTCPConn, src, target netip.AddrPort)
 	}
 
 	if isAnyBlockPid(pids) {
+		smm.PID = ipn.Block
+		if undidAlg && len(realips) <= 0 && len(domains) > 0 {
+			err = errNoIPsForDomain
+		} else {
+			err = errTcpFirewalled
+		}
 		core.Go("tcp.stall."+fid, func() {
-			smm.PID = ipn.Block
-			if undidAlg && len(realips) <= 0 && len(domains) > 0 {
-				err = errNoIPsForDomain
-			} else {
-				err = errTcpFirewalled
-			}
+			defer clos(gconn)
+			defer h.queueSummary(smm.done(err))
 			secs := h.stall(fid)
-			log.I("tcp: gconn %s firewalled from %s => %s (dom: %s / real: %s) for %s; stall? %ds",
+			log.I("tcp: %s firewalled from %s => %s (dom: %s / real: %s) for %s; stall? %ds",
 				cid, src, target, domains, realips, uid, secs)
-
-			clos(gconn)
-			h.queueSummary(smm.done(err))
 		})
 		return deny
 	}
@@ -264,7 +263,7 @@ func (h *tcpHandler) handle(px ipn.Proxy, src net.Conn, boundSrc, target netip.A
 		return err
 	}
 
-	core.Go("tcp.forward:"+smm.ID, func() {
+	core.Go("tcp.forward."+smm.ID, func() {
 		h.forward(src, dst, smm) // src always *gonet.TCPConn
 	})
 	return nil // handled; takes ownership of src
