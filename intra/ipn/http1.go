@@ -7,6 +7,7 @@
 package ipn
 
 import (
+	"context"
 	"crypto/tls"
 	"net/url"
 	"time"
