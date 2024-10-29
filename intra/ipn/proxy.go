@@ -161,12 +161,11 @@ func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 		host, port, err := net.SplitHostPort(x)
 		if err != nil {
 			port = "80"
+		} else {
 			x = host
 		}
-		on, err := strconv.ParseUint(port, 10, 16)
-		if err != nil {
-			log.W("proxy: %s reaches: %s port %s; err: %v",
-				p.ID(), x, port, err)
+		on, _ := strconv.ParseUint(port, 10, 16)
+		if on == 0 {
 			on = 80
 		}
 		if len(x) > 0 { // x may be ip, host
@@ -176,6 +175,7 @@ func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 				ipps = append(ipps, ipp)
 			}
 		}
+		log.V("proxy: %s reaches: %s:%d => %v", p.ID(), x, on, ipps)
 	}
 	tests := make([]core.WorkCtx[bool], 0)
 	for _, ipp := range ipps {
@@ -192,7 +192,8 @@ func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 	}
 
 	if len(tests) <= 0 {
-		log.W("proxy: %s reaches: %v; no tests", p.ID(), hostportOrIPPortCsv)
+		log.W("proxy: %s reaches: %v / %v; no tests for %s",
+			p.ID(), hostportOrIPPortCsv, ipps, protos)
 		return false
 	}
 
