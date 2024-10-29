@@ -97,7 +97,8 @@ var (
 
 type SEApi struct {
 	*se.SEClient
-	eps []se.SEIPEntry
+	eps  []se.SEIPEntry
+	ipps []netip.AddrPort
 }
 
 func NewSEasyClient(exit protect.RDialer) (sec *SEApi, err error) {
@@ -139,7 +140,13 @@ func (sec *SEApi) Start(ctx context.Context) (ok bool, err error) {
 		if discovered, discoerr := sec.Discover(ctx, fmt.Sprintf("\"%s\",,", geo.CountryCode)); err == nil {
 			for _, ep := range discovered {
 				if !sec.hasEp(ep) {
-					sec.eps = append(sec.eps, ep)
+					addr := ep.NetAddr()
+					if ipp, err := netip.ParseAddrPort(addr); err == nil {
+						sec.ipps = append(sec.ipps, ipp)
+						sec.eps = append(sec.eps, ep)
+					} else {
+						log.W("se: %s: err parsing %s: %v", geo.Country, addr, err)
+					}
 				}
 			}
 		} else {
@@ -158,13 +165,7 @@ func (sec *SEApi) Endpoints() []se.SEIPEntry {
 }
 
 func (sec *SEApi) Addrs() []netip.AddrPort {
-	ipps := make([]netip.AddrPort, 0)
-	for _, ep := range sec.eps {
-		if ipp, err := netip.ParseAddrPort(ep.NetAddr()); err == nil {
-			ipps = append(ipps, ipp)
-		}
-	}
-	return ipps
+	return sec.ipps
 }
 
 func (sec *SEApi) Refresh() {
