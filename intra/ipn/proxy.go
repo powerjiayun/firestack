@@ -149,6 +149,9 @@ func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 	if len(protos) <= 0 {
 		protos = []string{"tcp", "udp", "icmp"}
 	}
+	hastcp := has(protos, "tcp") || has(protos, "tcp4") || has(protos, "tcp6")
+	hasudp := has(protos, "udp") || has(protos, "udp4") || has(protos, "udp6")
+	hasicmp := has(protos, "icmp") || has(protos, "icmp4") || has(protos, "icmp6")
 	// upstream := dnsx.Default
 	// if pdns := p.DNS(); len(pdns) > 0 {
 	//	upstream = pdns
@@ -177,13 +180,13 @@ func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 	tests := make([]core.WorkCtx[bool], 0)
 	for _, ipp := range ipps {
 		ippstr := ipp.String()
-		if has(protos, "tcp") || has(protos, "tcp4") || has(protos, "tcp6") {
+		if hastcp {
 			tests = append(tests, tcpReachesWorkCtx(p, ippstr))
 		}
-		if has(protos, "udp") || has(protos, "udp4") || has(protos, "udp6") {
+		if hasudp {
 			tests = append(tests, udpReachesWorkCtx(p, ippstr))
 		}
-		if has(protos, "icmp") || has(protos, "icmp4") || has(protos, "icmp6") {
+		if hasicmp {
 			tests = append(tests, icmpReachesWorkCtx(p, ipp))
 		}
 	}
