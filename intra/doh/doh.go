@@ -27,6 +27,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -88,6 +89,7 @@ type transport struct {
 	pxclients      map[string]*proxytransport // todo: use weak pointers for Proxy
 	lastpurge      *core.Volatile[time.Time]  // last scrubbed time for stale pxclients
 	dialer         *protect.RDial
+	preferGET      bool        // saw 405 Method Not Allowed
 	proxies        ipn.Proxies // proxy provider, may be nil
 	relay          ipn.Proxy   // dial doh via relay, may be nil
 	status         int
@@ -556,8 +558,8 @@ func (t *transport) do(pid string, req *http.Request) (ans []byte, blocklists, r
 			log.VV("doh: connect-start(%s, %s)", network, addr)
 		},
 		TLSHandshakeDone: func(state tls.ConnectionState, err error) {
-			log.VV("doh: tls-handshake-done(resumed? %t, ech? %t); err? %v",
-				state.DidResume, state.ECHAccepted, err)
+			log.VV("doh: %s tls%d (resumed? %t, done? %t, ech? %t); err? %v",
+				state.ServerName, state.Version, state.DidResume, state.HandshakeComplete, state.ECHAccepted, err)
 			withech = state.ECHAccepted
 		},
 		WroteRequest: func(info httptrace.WroteRequestInfo) {
@@ -566,35 +568,39 @@ func (t *transport) do(pid string, req *http.Request) (ans []byte, blocklists, r
 	}
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &trace))
 
-	log.V("doh: sending query to: %s", t.hostname)
+	log.VV("doh: sending query to: %s", t.hostname)
 
-	httpResponse, err := t.fetch(pid, req)
+	res, err := t.fetch(pid, req)
 
-	if err != nil || httpResponse == nil {
+	if err != nil || res == nil {
 		qerr = dnsx.NewSendFailedQueryError(err)
 		return
 	}
 
-	blocklists, region = t.rdnsHeaders(&httpResponse.Header)
+	blocklists, region = t.rdnsHeaders(&res.Header)
 	// todo: check if content-type is [doh|odoh] mime type
 
-	ans, err = io.ReadAll(httpResponse.Body)
+	ans, err = io.ReadAll(res.Body)
 	if err != nil {
 		qerr = dnsx.NewSendFailedQueryError(err)
 		return
 	}
-	core.Close(httpResponse.Body)
+	core.Close(res.Body)
 	log.V("doh: closed response of sz %d; used ech? %t", len(ans), withech)
 
 	// update the hostname, which could have changed due to a redirect
-	hostname = httpResponse.Request.URL.Hostname()
+	// for ex, 1.1.1.1 or cloudflare-dns.com => one.one.one.one
+	hostname = res.Request.URL.Hostname()
 
-	sc := httpResponse.StatusCode
+	sc := res.StatusCode
 	if sc != http.StatusOK { // 4xx
 		if sc >= http.StatusBadRequest && sc < http.StatusInternalServerError {
 			qerr = dnsx.NewClientQueryError(fmt.Errorf("http-status: %d", sc))
 		} else {
 			qerr = dnsx.NewTransportQueryError(fmt.Errorf("http-status: %d", sc))
+		}
+		if !t.preferGET { // flip on 404 or 405; then remain on GET
+			t.preferGET = sc == http.StatusMethodNotAllowed || sc == http.StatusNotFound
 		}
 		return
 	}
@@ -640,7 +646,12 @@ func (t *transport) asDohRequest(msg *dns.Msg) (req *http.Request, err error) {
 	if err != nil {
 		return
 	}
-	req, err = http.NewRequest(http.MethodPost, t.url, bytes.NewBuffer(q))
+	if t.preferGET {
+		url := t.url + "?dns=" + base64.RawURLEncoding.EncodeToString(q)
+		req, err = http.NewRequest(http.MethodGet, url, nil)
+	} else {
+		req, err = http.NewRequest(http.MethodPost, t.url, bytes.NewBuffer(q))
+	}
 	if err != nil {
 		return
 	}
