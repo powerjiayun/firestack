@@ -27,8 +27,8 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/netip"
+	"net/url"
 	"time"
 
 	se "github.com/Snawoot/opera-proxy/seclient"
@@ -181,30 +181,18 @@ func (sed *sedialer) Dial(network, dest string) (conn net.Conn, err error) {
 	})
 
 	req := &http.Request{
-		Method:     methodConnect,
-		Proto:      protoH1,
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		RequestURI: dest,
-		Host:       dest,
+		Method: methodConnect,
+		Proto:  protoH1,
+		URL:    &url.URL{Opaque: dest},
+		Host:   dest,
 		Header: http.Header{
 			hdrHost: []string{dest},
 		},
 	}
-
 	// auth is refreshed async; never cache it
 	req.Header.Set(hdrProxyAuthz, sed.auth())
 
-	rawreq, err := httputil.DumpRequest(req, false)
-	if err != nil {
-		return conn, err
-	}
-
-	_, err = conn.Write(rawreq)
-	if err != nil {
-		log.E("se: %s err writing req: %v", sed.addr, err)
-		return conn, err
-	}
+	res, err := roundtrip(conn, req)
 
 	if err != nil || res == nil {
 		log.E("se: %s => %s err reading res: %v", sed.addr, dest, core.OneErr(err, errNoProxyResponse))
@@ -256,36 +244,16 @@ func (sed *sedialer) tlsVerify(cs tls.ConnectionState) error {
 	return err
 }
 
+func roundtrip(conn net.Conn, req *http.Request) (*http.Response, error) {
+	if err := req.Write(conn); err != nil {
+		return nil, fmt.Errorf("se: failed writing req: %v", err)
+	}
+	return http.ReadResponse(bufio.NewReader(conn), req)
+}
+
 func headerBasicAuth(u, pwd string) string {
 	return "Basic " + base64.StdEncoding.EncodeToString(
 		[]byte(u+":"+pwd))
-}
-
-// readPartial reads http response headers from r into a new http.Response.
-func readPartial(r io.Reader, req *http.Request) (*http.Response, error) {
-	acc := &bytes.Buffer{} // accumulator
-	b := make([]byte, 1)   // one byte at a time
-	for {
-		n, err := r.Read(b)
-		if n < 1 && err == nil {
-			continue
-		}
-
-		acc.Write(b)
-		sl := acc.Bytes()
-		if len(sl) < len(crlf) {
-			continue
-		}
-
-		if bytes.Equal(sl[len(sl)-4:], crlf) {
-			break
-		}
-
-		if err != nil {
-			return nil, err
-		}
-	}
-	return http.ReadResponse(bufio.NewReader(acc), req)
 }
 
 // Handle implements Proxy.
