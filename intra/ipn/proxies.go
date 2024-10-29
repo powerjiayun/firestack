@@ -66,7 +66,8 @@ var (
 	errAddProxy        = errors.New("proxy: add failed")
 	errProxyNotFound   = errors.New("proxy: not found")
 	errGetProxyTimeout = errors.New("proxy: get timeout")
-	errProxyDown       = errors.New("proxy: all down")
+	errProxyAllDown    = errors.New("proxy: all down")
+	errNoProxyHealthy  = errors.New("proxy: no chosen healthy")
 	errMissingProxyOpt = errors.New("proxy: opts nil")
 	errNoProxyConn     = errors.New("proxy: not a tcp/udp conn")
 	errNotUDPConn      = errors.New("proxy: not a udp conn")
@@ -303,16 +304,15 @@ func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Pro
 	}
 
 	var lopinned string
-	all := make(map[string]struct{}, len(pids))
-	for _, pid := range pids {
-		all[pid] = struct{}{}
-	}
 
 	pinnedpid, pinok := px.getpin(uid, ipp)
-	_, chosen := all[pinnedpid]
-	delete(all, pinnedpid) // mark visited
+	chosen := has(pids, pinnedpid)
+	lo := local(pinnedpid)
 
-	if pinok && chosen && local(pinnedpid) {
+	log.VV("proxy: pin: %s+%s; pinned: %s; chosen? %t / local? %t; from pids: %v",
+		uid, ipp, pinnedpid, chosen, lo, pids)
+
+	if pinok && chosen && lo {
 		// always favour remote proxy pins over local, if any
 		lopinned = pinnedpid
 	} else if pinok && chosen {
@@ -326,6 +326,7 @@ func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Pro
 
 	ippstr := ipp.String()
 	notokproxies := make([]string, 0)
+	endproxies := make([]string, 0)
 	norouteproxies := make([]string, 0)
 	missproxies := make([]string, 0)
 	loproxies := make([]string, 0)
@@ -343,28 +344,30 @@ func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Pro
 		}
 
 		p, err := px.ProxyFor(pid)
-		if err != nil { // proxy 404
+		if err != nil || p == nil { // proxy 404
 			missproxies = append(missproxies, pid)
 			continue
 		}
 
-		if r := p.Router(); r != nil {
-			canroute := r.Contains(ippstr)
-			if canroute {
-				err := px.pin(uid, ipp, p)
-				if err == nil {
-					return p, nil
-				} // else: proxy not ok
-				notokproxies = append(notokproxies, pid)
-			} // else: proxy cannot route
-			norouteproxies = append(norouteproxies, pid)
-		} else {
+		if p.Status() == END {
+			endproxies = append(endproxies, pid)
+			continue
+		}
+
+		if hasroute := p.Router().Contains(ippstr); hasroute {
 			err := px.pin(uid, ipp, p)
 			if err == nil {
+				log.VV("proxy: pin: %s+%s; pinned: %s; from pids: %v", uid, ipp, pid, pids)
 				return p, nil
 			} // else: proxy not ok
 			notokproxies = append(notokproxies, pid)
-		}
+		} // else: proxy cannot route
+		norouteproxies = append(norouteproxies, pid)
+	}
+
+	// can route but not healthy; drop
+	if len(notokproxies) > 0 {
+		return nil, errNoProxyHealthy
 	}
 
 	// lopinned is always the first element, if any.
@@ -378,9 +381,9 @@ func (px *proxifier) ProxyTo(ipp netip.AddrPort, uid string, pids []string) (Pro
 		missproxies = append(missproxies, pid)
 	}
 
-	log.VV("proxy: pin: %s+%s; miss: %v; notok: %v; noroute: %v",
-		uid, ipp, missproxies, notokproxies, norouteproxies)
-	return nil, errProxyDown
+	log.VV("proxy: pin: %s+%s; miss: %v; notok: %v; noroute: %v; ended %v",
+		uid, ipp, missproxies, notokproxies, norouteproxies, endproxies)
+	return nil, errProxyAllDown
 }
 
 func (px *proxifier) pinID(uid string, ipp netip.AddrPort, id string) (Proxy, error) {
