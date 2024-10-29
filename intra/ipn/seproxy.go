@@ -53,10 +53,8 @@ const (
 	seHostname    = "sec-tunnel.com"
 )
 
-var (
-	crlf      = []byte("\r\n\r\n")
-	fourHours = 4 * time.Hour
-)
+const fourHours = 4 * time.Hour
+
 var (
 	errMissingSEClient = errors.New("se: missing client")
 	errSEProxyBlocks   = errors.New("se: remote blocked request")

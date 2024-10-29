@@ -85,6 +85,8 @@ CV4Ks2dH/hzg1cEo70qLRDEmBDeNiXQ2Lu+lIg+DdEmSx/cQwgwp+7e9un/jX9Wf
 `
 )
 
+const refreshTimeout = 30 * time.Second
+
 var (
 	defaultGeos = []se.SEGeoEntry{
 		{CountryCode: "EU", Country: "Europe"},
@@ -168,12 +170,12 @@ func (sec *SEApi) Addrs() []netip.AddrPort {
 func (sec *SEApi) Refresh() {
 	bg := context.Background()
 
-	ctx, done := context.WithTimeout(bg, 30*time.Second)
+	ctx, done := context.WithTimeout(bg, refreshTimeout)
 	defer done()
 	err := sec.Login(ctx)
 	loged(err)("se: login refresh; err? %v", err)
 
-	ctx, done = context.WithTimeout(bg, 30*time.Second)
+	ctx, done = context.WithTimeout(bg, refreshTimeout)
 	defer done()
 	err = sec.DeviceGeneratePassword(ctx)
 	loged(err)("se: auth refresh; err? %v", err)

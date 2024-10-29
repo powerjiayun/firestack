@@ -27,11 +27,6 @@ type icmpHandler struct {
 	*baseHandler
 }
 
-const (
-	blocktime   = 25 * time.Second
-	icmptimeout = 10 * time.Second
-)
-
 var _ netstack.GICMPHandler = (*icmpHandler)(nil)
 
 func NewICMPHandler(pctx context.Context, resolver dnsx.Resolver, prox ipn.Proxies, tunMode *settings.TunMode, listener Listener) netstack.GICMPHandler {
@@ -134,14 +129,6 @@ func extend(c core.MinConn, t time.Duration) {
 
 func anyaddrFor(ipp netip.AddrPort) (proto, anyaddr string) {
 	return ipn.AnyAddrForUDP(ipp)
-}
-
-func logei(err error) log.LogFn {
-	f := log.E
-	if err == nil {
-		f = log.I
-	}
-	return f
 }
 
 func logev(err error) log.LogFn {
