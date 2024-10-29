@@ -266,3 +266,10 @@ func anyaddr4to6(addr string) string {
 	}
 	return addr
 }
+
+func logeif(e bool) log.LogFn {
+	if e {
+		return log.E
+	}
+	return log.D
+}
