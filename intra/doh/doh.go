@@ -285,7 +285,7 @@ func h2(d protect.DialFn, c *tls.Config) *http.Transport {
 		// Android's DNS-over-TLS sets it to 30s
 		ResponseHeaderTimeout: 20 * time.Second,
 		// SNI (hostname) must always be inferred from http-request
-		TLSClientConfig: c.Clone(),
+		TLSClientConfig: c,
 	}
 }
 
