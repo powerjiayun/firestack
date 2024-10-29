@@ -135,8 +135,8 @@ func (d *RDial) DialBind(network, local, remote string) (net.Conn, error) {
 		// ip addr binding is left upto dialer's Control
 		// which is "namespace" aware (on Android)
 		onlyport = netip.AddrPortFrom(anyaddr, uint16(uport))
-	} else { // okay for local to be invalid
-		log.D("xdial: DialBind: (o: %s); %s %s=>%s; err: invalid laddr not bound",
+	} else { // okay for local to be invalid; called by retrier.DialTCP
+		log.VV("xdial: DialBind: (o: %s); %s %s=>%s; why: laddr nil",
 			d.owner, network, local, remote)
 	}
 
@@ -228,7 +228,6 @@ func (d *RDial) DialTCP(network string, laddr, raddr *net.TCPAddr) (*net.TCPConn
 	if c, err := d.DialBind(network, laddr.String(), raddr.String()); err != nil {
 		return nil, err
 	} else if tc, ok := c.(*net.TCPConn); ok {
-		// d.Dialer.LocalAddr = nil
 		return tc, nil
 	} else {
 		log.T("xdial: DialTCP: (%s) to %s => %s, %T is not %T (ok? %t); other errs: %v",
@@ -243,12 +242,9 @@ func (d *RDial) DialTCP(network string, laddr, raddr *net.TCPAddr) (*net.TCPConn
 // DialUDP creates a net.UDPConn to raddr.
 // Helper method for d.Dial("udp", laddr.String(), raddr.String())
 func (d *RDial) DialUDP(network string, laddr, raddr *net.UDPAddr) (*net.UDPConn, error) {
-	// grab a mutex if mutating LocalAddr
-	// d.Dialer.LocalAddr = laddr
 	if c, err := d.DialBind(network, laddr.String(), raddr.String()); err != nil {
 		return nil, err
 	} else if uc, ok := c.(*net.UDPConn); ok {
-		// d.Dialer.LocalAddr = nil
 		return uc, nil
 	} else {
 		log.T("xdial: DialUDP: (%s) to %s => %s, %T is not %T (ok? %t); other errs: %v",
