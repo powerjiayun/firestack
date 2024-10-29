@@ -35,7 +35,7 @@ type http1 struct {
 	status          *core.Volatile[int]
 }
 
-func NewHTTPProxy(id string, c protect.Controller, po *settings.ProxyOptions) (*http1, error) {
+func NewHTTPProxy(id string, ctx context.Context, c protect.Controller, po *settings.ProxyOptions) (*http1, error) {
 	var err error
 	if po == nil {
 		log.W("proxy: err setting up http1 w(%v): %v", po, err)
@@ -48,7 +48,7 @@ func NewHTTPProxy(id string, c protect.Controller, po *settings.ProxyOptions) (*
 		return nil, errProxyScheme
 	}
 
-	d := protect.MakeNsDialer(id, c)
+	d := protect.MakeNsRDial(id, ctx, c)
 
 	opts := make([]tx.Opt, 0)
 	optdialer := tx.WithDialer(d)

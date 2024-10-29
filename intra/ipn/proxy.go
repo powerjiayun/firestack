@@ -28,7 +28,7 @@ import (
 
 func (pxr *proxifier) NewSocks5Proxy(id, user, pwd, ip, port string) (p *socks5, err error) {
 	opts := settings.NewAuthProxyOptions("socks5", user, pwd, ip, port, nil)
-	return NewSocks5Proxy(id, pxr.ctl, opts)
+	return NewSocks5Proxy(id, pxr.ctx, pxr.ctl, opts)
 }
 
 func (pxr *proxifier) AddProxy(id, txt string) (x.Proxy, error) {
@@ -120,17 +120,17 @@ func (pxr *proxifier) fromOpts(id string, opts *settings.ProxyOptions) (Proxy, e
 	var err error = nil
 	switch opts.Scheme {
 	case "socks5":
-		p, err = NewSocks5Proxy(id, pxr.ctl, opts)
+		p, err = NewSocks5Proxy(id, pxr.ctx, pxr.ctl, opts)
 	case "http":
 		fallthrough
 	case "https":
-		p, err = NewHTTPProxy(id, pxr.ctl, opts)
+		p, err = NewHTTPProxy(id, pxr.ctx, pxr.ctl, opts)
 	case "piph2":
 		// todo: assert id == RpnH2
-		p, err = NewPipProxy(pxr.ctl, opts)
+		p, err = NewPipProxy(pxr.ctx, pxr.ctl, opts)
 	case "pipws":
 		// todo: assert id == RpnWs
-		p, err = NewPipWsProxy(pxr.ctl, opts)
+		p, err = NewPipWsProxy(pxr.ctx, pxr.ctl, opts)
 	case "wg":
 		err = fmt.Errorf("proxy: id must be prefixed with %s in %s for [%s]", WG, id, opts)
 	default:

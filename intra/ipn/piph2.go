@@ -160,7 +160,7 @@ func (t *piph2) dial(network, addr string) (net.Conn, error) {
 	}
 }
 
-func NewPipProxy(ctl protect.Controller, po *settings.ProxyOptions) (*piph2, error) {
+func NewPipProxy(ctx context.Context, ctl protect.Controller, po *settings.ProxyOptions) (*piph2, error) {
 	if po == nil {
 		return nil, errMissingProxyOpt
 	}
@@ -197,7 +197,7 @@ func NewPipProxy(ctl protect.Controller, po *settings.ProxyOptions) (*piph2, err
 	if len(rsasig) == 0 {
 		return nil, errNoSig
 	}
-	ctx, done := context.WithCancel(context.Background())
+	ctx, done := context.WithCancel(ctx)
 	t := &piph2{
 		url:      parsedurl.String(),
 		hostname: parsedurl.Hostname(),
