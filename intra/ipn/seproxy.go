@@ -27,6 +27,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/netip"
 	"net/url"
 	"time"
@@ -54,6 +55,14 @@ const (
 )
 
 const fourHours = 4 * time.Hour
+
+// read byte by byte until crlf to avoid reading
+// more than just the request line:
+// github.com/saucelabs/forwarder/issues/616
+const readonebyte = true
+
+// end of request line
+var crlfcrlf = []byte("\r\n\r\n")
 
 var (
 	errMissingSEClient = errors.New("se: missing client")
@@ -181,8 +190,12 @@ func (sed *sedialer) Dial(network, dest string) (conn net.Conn, err error) {
 	req := &http.Request{
 		Method: methodConnect,
 		Proto:  protoH1,
-		URL:    &url.URL{Opaque: dest},
-		Host:   dest,
+		// major.minor must be set to 1.1
+		// go.dev/play/p/aPrGA91cmeW
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		URL:        &url.URL{Opaque: dest},
+		Host:       dest,
 		Header: http.Header{
 			hdrHost: []string{dest},
 		},
@@ -243,10 +256,44 @@ func (sed *sedialer) tlsVerify(cs tls.ConnectionState) error {
 }
 
 func roundtrip(conn net.Conn, req *http.Request) (*http.Response, error) {
-	if err := req.Write(conn); err != nil {
-		return nil, fmt.Errorf("se: failed writing req: %v", err)
+	if readonebyte {
+		rawreq, err := httputil.DumpRequest(req, false)
+		if err != nil {
+			return nil, fmt.Errorf("se: dump req err %v", err)
+		}
+		_, err = conn.Write(rawreq)
+		if err != nil {
+			return nil, fmt.Errorf("se: write req err %v", err)
+		}
+
+		acc := new(bytes.Buffer) // accumulator
+		b := make([]byte, 1)     // one byte at a time
+		for {
+			n, err := conn.Read(b)
+			if n < 1 && err == nil {
+				continue
+			}
+			acc.Write(b) // acc until crlfcrlf
+			reqline := acc.Bytes()
+			tot := len(reqline)
+			if tot < len(crlfcrlf) {
+				continue
+			}
+			// check if last 4 bytes are crlfcrlf
+			if bytes.Equal(reqline[tot-4:], crlfcrlf) {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("se: read req %d err %v", tot, err)
+			}
+		}
+		return http.ReadResponse(bufio.NewReader(acc), req)
+	} else {
+		if err := req.Write(conn); err != nil {
+			return nil, fmt.Errorf("se: write2 req err %v", err)
+		}
+		return http.ReadResponse(bufio.NewReader(conn), req)
 	}
-	return http.ReadResponse(bufio.NewReader(conn), req)
 }
 
 func headerBasicAuth(u, pwd string) string {
