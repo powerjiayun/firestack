@@ -69,9 +69,9 @@ func fetchCurrentDNSCryptCert(proxy *DcMulti, serverName *string, pk ed25519.Pub
 	}
 	log.I("dnscrypt: [%v] Fetching DNSCrypt certificate for [%s] at [%v]", *serverName, providerName, serverAddress)
 	in, rtt, err := dnsExchange(proxy.dialer, &query, serverAddress, serverName)
-	if err != nil {
+	if err != nil || in == nil {
 		log.W("dnscrypt: [%s] TIMEOUT %v", *serverName, err)
-		return certinfo{}, err
+		return certinfo{}, core.OneErr(err, errFetchingCerts)
 	}
 	now := uint32(time.Now().Unix())
 	certInfo := certinfo{CryptoConstruction: xdns.UndefinedConstruction}

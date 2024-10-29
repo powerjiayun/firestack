@@ -322,7 +322,8 @@ func (t *pipws) forward(network, addr string) (protect.Conn, error) {
 	rurl := u.String()
 	c, res, err := t.wsconn(rurl, msg)
 	t.lastdial = time.Now()
-	if err != nil {
+	if err != nil || res == nil { // nilaway
+		err = core.OneErr(err, errNoProxyConn)
 		core.CloseConn(c)
 		log.E("pipws: req %s err: %v", rurl, err)
 		t.status.Store(TKO)

@@ -220,11 +220,8 @@ func (r *retrier) dialLocked() (c core.DuplexConn, err error) {
 
 	begin := time.Now()
 	c, err = r.doDialLocked(strat)
-	if c == nil {
-		err = core.OneErr(err, errNoConn)
-	}
-
 	rtt := time.Since(begin)
+
 	r.conn = c // c may be nil
 	r.timeout = calcTimeout(rtt)
 
@@ -250,10 +247,8 @@ func (r *retrier) doDialLocked(dialStrat int32) (_ core.DuplexConn, err error) {
 	default:
 	}
 	conn, err = r.dialer.DialTCP(r.raddr.Network(), r.laddr, r.raddr)
-	if err != nil {
+	if err != nil || conn == nil {
 		return nil, err
-	} else if conn == nil {
-		return nil, errNoConn
 	}
 	// todo: strat must be tcp or tls
 	return &splitter{conn: conn, strat: dialStrat}, nil
@@ -265,8 +260,8 @@ func (r *retrier) doDialLocked(dialStrat int32) (_ core.DuplexConn, err error) {
 func (r *retrier) retryWriteReadLocked(buf []byte) (int, error) {
 	// r.dialLocked also closes provisional socket
 	newConn, err := r.dialLocked()
-	if err != nil {
-		return 0, err
+	if err != nil || newConn == nil {
+		return 0, core.OneErr(err, errNoConn)
 	}
 
 	var nw int
