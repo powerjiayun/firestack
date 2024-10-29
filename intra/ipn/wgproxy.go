@@ -986,6 +986,9 @@ func (h *wgtun) listener(op string, err error) {
 	h.status.Store(s)
 }
 
+// func Handle(), GetAddr(), Dialer(), Reaches(), Stop(),
+// OnProtoChange(), Ping(), Stats(), Router() impl by wgproxy.
+
 // now returns the current time in unix millis
 func now() int64 {
 	return time.Now().UnixMilli()
@@ -1012,5 +1015,3 @@ func logev(err error) log.LogFn {
 	}
 	return log.V
 }
-
-// func Stop(), Fetch(), getDialer() is impl by wgproxy
