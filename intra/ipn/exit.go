@@ -65,7 +65,7 @@ func (h *exit) dial(network, local, remote string) (protect.Conn, error) {
 	defer localDialStatus(h.status, err)
 
 	maybeKeepAlive(c)
-	log.I("proxy: exit: dial(%s) to %s=>%s; err? %v", network, local, remote, err)
+	log.I("proxy: exit: dial(%s) %s => %s; err? %v", network, local, remote, err)
 	return c, err
 }
 
