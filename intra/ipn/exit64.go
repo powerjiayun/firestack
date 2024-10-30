@@ -170,18 +170,22 @@ func (h *exit64) Probe(network, local string) (protect.PacketConn, error) {
 	return c, err
 }
 
+// Dialer implements Proxy.
 func (h *exit64) Dialer() protect.RDialer {
 	return h
 }
 
+// ID implements Proxy.
 func (h *exit64) ID() string {
 	return Rpn64
 }
 
+// Type implements Proxy.
 func (h *exit64) Type() string {
 	return RPN
 }
 
+// Router implements Proxy.
 func (h *exit64) Router() x.Router {
 	return h
 }
@@ -191,14 +195,17 @@ func (h *exit64) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(h, hostportOrIPPortCsv)
 }
 
+// GetAddr implements Proxy.
 func (h *exit64) GetAddr() string {
 	return h.addr
 }
 
+// Status implements Proxy.
 func (h *exit64) Status() int {
 	return h.status.Load()
 }
 
+// Stop implements Proxy.
 func (h *exit64) Stop() error {
 	h.status.Store(END)
 	h.done()

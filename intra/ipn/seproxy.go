@@ -355,7 +355,7 @@ func (d *seproxy) Dialer() protect.RDialer {
 	return d
 }
 
-// Reaches implements Proxy.
+// Reaches implements x.Router.
 func (h *seproxy) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(h, hostportOrIPPortCsv)
 }

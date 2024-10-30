@@ -129,10 +129,12 @@ func (h *http1) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(h, hostportOrIPPortCsv)
 }
 
+// GetAddr implements Proxy.
 func (h *http1) GetAddr() string {
 	return h.opts.IPPort
 }
 
+// Status implements Proxy.
 func (h *http1) Status() int {
 	s := h.status.Load()
 	if s != END && idling(h.lastdial) {

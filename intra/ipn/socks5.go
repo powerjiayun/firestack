@@ -159,6 +159,7 @@ func (h *socks5) Dial(network, addr string) (c protect.Conn, err error) {
 	return h.dial(network, "", addr)
 }
 
+// DialBind implements Proxy.
 func (h *socks5) DialBind(network, local, remote string) (c protect.Conn, err error) {
 	log.D("proxy: socks5: %s dialbind(%s) %s => %s; not supported",
 		h.ID(), network, local, remote)
@@ -209,18 +210,22 @@ func (h *socks5) dial(network, _, remote string) (c protect.Conn, err error) {
 	return
 }
 
+// Dialer implements Proxy.
 func (h *socks5) Dialer() protect.RDialer {
 	return h
 }
 
+// ID implements Proxy.
 func (h *socks5) ID() string {
 	return h.id
 }
 
+// Type implements Proxy.
 func (h *socks5) Type() string {
 	return SOCKS5
 }
 
+// Router implements Proxy.
 func (h *socks5) Router() x.Router {
 	return h
 }
@@ -230,10 +235,12 @@ func (h *socks5) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(h, hostportOrIPPortCsv)
 }
 
+// GetAddr implements Proxy.
 func (h *socks5) GetAddr() string {
 	return h.opts.IPPort
 }
 
+// Status implements Proxy.
 func (h *socks5) Status() int {
 	s := h.status.Load()
 	if s != END && idling(h.lastdial) {
@@ -242,6 +249,7 @@ func (h *socks5) Status() int {
 	return s
 }
 
+// Stop implements Proxy.
 func (h *socks5) Stop() error {
 	h.status.Store(END)
 	h.done()
@@ -249,6 +257,7 @@ func (h *socks5) Stop() error {
 	return nil
 }
 
+// OnProtoChange implements Proxy.
 func (h *socks5) OnProtoChange() (string, bool) {
 	return h.opts.FullUrl(), true
 }

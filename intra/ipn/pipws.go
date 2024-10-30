@@ -227,18 +227,22 @@ func (t *pipws) h2(cfg *tls.Config) *http.Transport {
 	}
 }
 
+// ID implements Proxy.
 func (t *pipws) ID() string {
 	return RpnWs
 }
 
+// Type implements Proxy.
 func (t *pipws) Type() string {
 	return PIPWS
 }
 
+// GetAddr implements Proxy.
 func (t *pipws) GetAddr() string {
 	return t.hostname + ":" + strconv.Itoa(t.port)
 }
 
+// Router implements Proxy.
 func (t *pipws) Router() x.Router {
 	return t
 }
@@ -255,6 +259,7 @@ func (t *pipws) Stop() error {
 	return nil
 }
 
+// Status implements Proxy.
 func (t *pipws) Status() int {
 	s := t.status.Load()
 	if s != END && idling(t.lastdial) {

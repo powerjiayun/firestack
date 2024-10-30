@@ -241,18 +241,22 @@ func NewPipProxy(ctx context.Context, ctl protect.Controller, po *settings.Proxy
 	return t, nil
 }
 
+// ID implements Proxy.
 func (t *piph2) ID() string {
 	return RpnH2
 }
 
+// Type implements Proxy.
 func (t *piph2) Type() string {
 	return PIPH2
 }
 
+// GetAddr implements Proxy.
 func (t *piph2) GetAddr() string {
 	return t.hostname + ":" + strconv.Itoa(t.port)
 }
 
+// Router implements x.Router.
 func (t *piph2) Router() x.Router {
 	return t
 }
@@ -262,12 +266,14 @@ func (t *piph2) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(t, hostportOrIPPortCsv)
 }
 
+// Start implements Proxy.
 func (t *piph2) Stop() error {
 	t.status.Store(END)
 	t.done()
 	return nil
 }
 
+// Status implements Proxy.
 func (t *piph2) Status() int {
 	st := t.status.Load()
 	if st != END && idling(t.lastdial.Load()) {
@@ -468,6 +474,7 @@ func (t *piph2) forward(network, addr string) (protect.Conn, error) {
 	return oconn, nil
 }
 
+// Dialer implements Proxy.
 func (h *piph2) Dialer() protect.RDialer {
 	return h
 }
