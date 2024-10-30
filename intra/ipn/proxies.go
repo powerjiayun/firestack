@@ -494,6 +494,8 @@ func (px *proxifier) stopProxies() {
 		})
 	}
 	clear(px.p)
+	px.ipPins.Clear()
+	px.uidPins.Clear()
 
 	core.Go("pxr.onStop", func() { px.obs.OnProxiesStopped() })
 	log.I("proxy: all(%d) stopped and removed", l)

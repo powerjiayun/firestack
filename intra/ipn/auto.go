@@ -264,6 +264,7 @@ func (h *auto) Status() int {
 
 func (h *auto) Stop() error {
 	h.status.Store(END)
+	h.exp.Clear()
 	log.I("proxy: auto: stopped")
 	return nil
 }
