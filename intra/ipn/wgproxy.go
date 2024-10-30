@@ -184,7 +184,7 @@ func (w *wgproxy) OnProtoChange() (string, bool) {
 	return "", false // do not re-add this refreshed wg
 }
 
-// Ping implements Proxy.
+// Ping implements Proxy
 // As backpressure, pings are sent once in a 30s period.
 func (w *wgproxy) Ping() bool {
 	if w.status.Load() == END {
@@ -495,6 +495,7 @@ func NewWgProxy(id string, ctl protect.Controller, rev netstack.GConnHandler, cf
 
 	err = wgdev.IpcSet(uapicfg)
 	if err != nil {
+		defer wgdev.Close()
 		log.E("proxy: wg: %s failed to ipc-set %v", id, err)
 		return nil, err
 	}
@@ -504,6 +505,7 @@ func NewWgProxy(id string, ctl protect.Controller, rev netstack.GConnHandler, cf
 
 	err = wgdev.Up()
 	if err != nil {
+		defer wgdev.Close()
 		log.E("proxy: wg: %s failed init %v", id, err)
 		return nil, err
 	}
@@ -745,18 +747,19 @@ func (tun *wgtun) Close() error {
 
 // Implements Router.
 // TODO: use wgtun as a receiver for Stats()
+// Never returns nil.
 func (w *wgproxy) Stat() (out *x.RouterStats) {
 	out = new(x.RouterStats)
 
 	if w.status.Load() == END {
 		log.W("proxy: wg: %s stats: stopped", w.id)
-		return
+		return // zz
 	}
 
 	stat := wg.ReadStats(w.id, w.IpcGet)
 	if stat == nil { // unlikely
 		log.W("proxy: wg: %s stats: readstats: nil", w.id)
-		return
+		return // zz
 	}
 	out.Rx = stat.TotalRx()
 	out.Tx = stat.TotalTx()
