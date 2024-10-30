@@ -140,18 +140,23 @@ func (pxr *proxifier) fromOpts(id string, opts *settings.ProxyOptions) (Proxy, e
 }
 
 func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
-	if p == nil {
+	if p == nil || p.Status() == END {
 		return false
 	}
 	if len(hostportOrIPPortCsv) <= 0 {
 		return true
 	}
-	if len(protos) <= 0 {
-		protos = []string{"tcp", "udp", "icmp"}
-	}
+
 	hastcp := has(protos, "tcp") || has(protos, "tcp4") || has(protos, "tcp6")
 	hasudp := has(protos, "udp") || has(protos, "udp4") || has(protos, "udp6")
 	hasicmp := has(protos, "icmp") || has(protos, "icmp4") || has(protos, "icmp6")
+
+	if !hastcp && !hasudp && !hasicmp { // fail open
+		hastcp = true
+		hasudp = true
+		hasicmp = true
+		protos = []string{"tcp", "udp", "icmp"}
+	}
 	// upstream := dnsx.Default
 	// if pdns := p.DNS(); len(pdns) > 0 {
 	//	upstream = pdns
@@ -175,8 +180,8 @@ func Reaches(p Proxy, hostportOrIPPortCsv string, protos ...string) bool {
 				ipps = append(ipps, ipp)
 			}
 		}
-		log.V("proxy: %s reaches: %s:%d => %v", p.ID(), x, on, ipps)
 	}
+	log.V("proxy: %s reaches: testing for %s", p.ID(), ipps)
 	tests := make([]core.WorkCtx[bool], 0)
 	for _, ipp := range ipps {
 		ippstr := ipp.String()
