@@ -143,12 +143,17 @@ func (h *http1) Status() int {
 	return s
 }
 
+// Stop implements Proxy.
 func (h *http1) Stop() error {
 	h.status.Store(END)
 	log.I("proxy: http1: stopped %s", h.id)
 	return nil
 }
 
+// OnProtoChange implements Proxy.
 func (h *http1) OnProtoChange() (string, bool) {
+	if h.status.Load() == END {
+		return "", false
+	}
 	return h.opts.FullUrl(), true
 }
