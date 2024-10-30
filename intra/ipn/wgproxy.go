@@ -887,30 +887,34 @@ func (h *wgtun) Probe(network, local string) (pc net.PacketConn, err error) {
 	return
 }
 
-// implements Proxy
-
+// ID implements Proxy.
 func (h *wgtun) ID() string {
 	return h.id
 }
 
+// Type implements Proxy.
 func (h *wgtun) Type() string {
 	return WG
 }
 
+// Router implements Proxy.
 // TODO: make wgtun a Router; see Stats()
 func (h *wgproxy) Router() x.Router {
 	return h
 }
 
+// Reaches implements x.Router.
 // TODO: make wgtun a Router; see Stats()
 func (h *wgproxy) Reaches(hostportOrIPPortCsv string) bool {
 	return Reaches(h, hostportOrIPPortCsv)
 }
 
+// Stats implements Proxy.
 func (h *wgtun) Status() int {
 	return h.status.Load()
 }
 
+// DNS implements Proxy.
 func (h *wgtun) DNS() string {
 	var s string
 	// prefer hostnames over IPs:
@@ -948,10 +952,11 @@ func (h *wgtun) DNS() string {
 	return "" // nodns
 }
 
-// Implements Router
+// Implements x.Router.
 func (h *wgtun) IP4() bool { return h.hasV4 }
 func (h *wgtun) IP6() bool { return h.hasV6 }
 
+// Contains implements x.Router.
 func (h *wgtun) Contains(ippOrCidr string) bool {
 	y, err := h.rt.HasAny(ippOrCidr)
 	logev(err)("wg: %s router: %s contains? %t; err? %v", h.id, ippOrCidr, y, err)
