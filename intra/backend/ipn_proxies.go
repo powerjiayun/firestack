@@ -73,7 +73,7 @@ type Proxy interface {
 	ID() string
 	// Type returns the type of this proxy.
 	Type() string
-	// Returns routes.
+	// Returns x.Router.
 	Router() Router
 	// GetAddr returns the address of this proxy.
 	GetAddr() string
@@ -106,17 +106,17 @@ type Proxies interface {
 
 type Router interface {
 	// IP4 returns true if this router supports IPv4.
-	IP4() bool
+	IP4() (y bool)
 	// IP6 returns true if this router supports IPv6.
-	IP6() bool
+	IP6() (y bool)
 	// MTU returns the MTU of this router.
-	MTU() (int, error)
+	MTU() (mtu int, err error)
 	// Stats returns the stats of this router.
 	Stat() *RouterStats
 	// Reaches returns true if any host:port or ip:port is dialable.
-	Reaches(hostportOrIPPortCsv string) bool
+	Reaches(hostportOrIPPortCsv string) (y bool)
 	// Contains returns true if this router can route ipprefix.
-	Contains(ipprefix string) bool
+	Contains(ipprefix string) (y bool)
 }
 
 // ProxyListener is a listener for proxy events.
