@@ -343,13 +343,14 @@ func (t *rtunnel) stat() (*x.NetStat, error) {
 		out.RDNSIn.DNS = csv2ssv(r.LiveTransports())
 	}
 	if p := t.proxies; p != nil {
+		rr := p.Router()
+		ss := rr.Stat()
 		out.RDNSIn.Proxies = csv2ssv(p.LiveProxies())
-		out.RDNSIn.ProxiesHas4 = p.Router().IP4()
-		out.RDNSIn.ProxiesHas6 = p.Router().IP6()
-		if ps := p.Router().Stat(); ps != nil {
-			out.RDNSIn.ProxyLastOKMs = ps.LastOK
-			out.RDNSIn.ProxySinceMs = ps.Since
-		}
+		out.RDNSIn.ProxiesHas4 = rr.IP4()
+		out.RDNSIn.ProxiesHas6 = rr.IP6()
+		out.RDNSIn.ProxyLastOKMs = ss.LastOK
+		out.RDNSIn.ProxySinceMs = ss.Since
+
 	}
 	return out, nil
 }
