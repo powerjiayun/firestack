@@ -52,9 +52,9 @@ type Rpn interface {
 	RegisterWarp(publicKeyBase64 string) (json []byte, err error)
 	// RegisterSE registers a new SurfEasy user.
 	RegisterSE() error
-	// TestWarp pings random Warp endpoints and returns reachable ones.
+	// TestWarp connects to some Warp IPs and returns reachable ones.
 	TestWarp() (ips string, errs error)
-	// TestSE pings random SurfEasy endpoints and returns reachable ones.
+	// TestSE connects to some SurfEasy IPs and returns reachable ones.
 	TestSE() (ips string, errs error)
 	// Warp returns a RpnWg proxy.
 	Warp() (wg Proxy, err error)
