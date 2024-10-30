@@ -256,7 +256,7 @@ func (t *piph2) GetAddr() string {
 	return t.hostname + ":" + strconv.Itoa(t.port)
 }
 
-// Router implements x.Router.
+// Router implements Proxy.
 func (t *piph2) Router() x.Router {
 	return t
 }

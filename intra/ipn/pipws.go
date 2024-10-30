@@ -28,9 +28,9 @@ import (
 )
 
 const (
-	writeTimeout    time.Duration = 10 * time.Second
-	uniqClaimPerUrl               = false                              // generate a new claim per url
-	fixedMsgHex                   = "aecdcde241e3196f2252738c11467baf" // some fixed hex; 16 bytes
+	writeTimeout    = 10 * time.Second
+	uniqClaimPerUrl = false                              // generate a new claim per url
+	fixedMsgHex     = "aecdcde241e3196f2252738c11467baf" // some fixed hex; 16 bytes
 )
 
 type pipws struct {
