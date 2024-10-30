@@ -327,19 +327,18 @@ func healthy(p Proxy) error {
 		return errProxyStopped
 	} // TODO: err on TNT, TKO?
 
-	if stat := p.Router().Stat(); stat != nil {
-		now := now()
-		lastOK := stat.LastOK
-		lastOKNeverOK := lastOK <= 0
-		lastOKBeyondThres := now-lastOK > lastOKThreshold.Milliseconds()
-		if lastOKNeverOK || lastOKBeyondThres {
-			p.Ping()
-			return fmt.Errorf("proxy: %s not ok; lastOK: zz? %t / thres? %t",
-				pid, lastOKNeverOK, lastOKBeyondThres)
-		} else if now-lastOK > tzzTimeout.Milliseconds() {
-			p.Ping()
-		}
-	} // else: no stats; nothing to do
+	stat := p.Router().Stat()
+	now := now()
+	lastOK := stat.LastOK
+	lastOKNeverOK := lastOK <= 0
+	lastOKBeyondThres := now-lastOK > lastOKThreshold.Milliseconds()
+	if lastOKNeverOK || lastOKBeyondThres {
+		p.Ping()
+		return fmt.Errorf("proxy: %s not ok; lastOK: zz? %t / thres? %t",
+			pid, lastOKNeverOK, lastOKBeyondThres)
+	} else if now-lastOK > tzzTimeout.Milliseconds() {
+		p.Ping()
+	}
 
 	return nil // ok
 }
