@@ -161,13 +161,13 @@ func (w *wgproxy) Close() error {
 	return nil
 }
 
-// Stop implements ipn.Proxy
+// Stop implements Proxy
 func (w *wgproxy) Stop() error {
 	log.I("proxy: wg: stopping(%s); status(%d)", w.id, w.status)
 	return w.Close()
 }
 
-// GetAddr implements ipn.Proxy
+// GetAddr implements Proxy
 func (h *wgproxy) GetAddr() string {
 	dst := h.wgep.RemoteAddr()
 	if !dst.IsValid() {
@@ -176,7 +176,7 @@ func (h *wgproxy) GetAddr() string {
 	return dst.String()
 }
 
-// onProtoChange implements ipn.Proxy
+// onProtoChange implements Proxy
 func (w *wgproxy) OnProtoChange() (string, bool) {
 	_ = w.Refresh() // refresh on proto changes
 	// todo: on refresh err, re-add?
@@ -184,9 +184,14 @@ func (w *wgproxy) OnProtoChange() (string, bool) {
 	return "", false // do not re-add this refreshed wg
 }
 
-// Ping implements ipn.Proxy.
+// Ping implements Proxy.
 // As backpressure, pings are sent once in a 30s period.
 func (w *wgproxy) Ping() bool {
+	if w.status.Load() == END {
+		log.V("proxy: wg: %s ping: ENDed, status(%d)", w.id, w.status)
+		return false
+	}
+
 	now := now()
 	then := w.latestPing.Load()
 	neversent := then == 0
@@ -209,8 +214,12 @@ func (w *wgproxy) Ping() bool {
 	return false
 }
 
-// Refresh implements ipn.Proxy
+// Refresh implements Proxy
 func (w *wgproxy) Refresh() (err error) {
+	if w.status.Load() == END {
+		return errProxyStopped
+	}
+
 	w.latestPing.Store(0) // reset latest ping time
 
 	n := 0

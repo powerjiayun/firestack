@@ -100,6 +100,7 @@ type sedialer struct {
 var _ Proxy = (*seproxy)(nil)
 var _ proxy.Dialer = (*sedialer)(nil)
 
+// NewSEasyProxy returns a new seproxy.
 func NewSEasyProxy(ctx context.Context, c protect.Controller, sec *seasy.SEApi) (*seproxy, error) {
 	if sec == nil {
 		return nil, errMissingSEClient
@@ -332,6 +333,10 @@ func (h *seproxy) Router() x.Router {
 
 // Dial implements Proxy.
 func (h *seproxy) Dial(network, addr string) (protect.Conn, error) {
+	if h.status.Load() == END {
+		return nil, errProxyStopped
+	}
+
 	defer h.maybeRefresh()
 
 	c, err := dialers.ProxyDials(h.outbounds, network, addr)
